@@ -1,0 +1,242 @@
+# Bollinger Band Mean Reversion Strategy Configuration
+# Replicates proven manual trading method: 15m BTC/USDT futures, 50% capital, 20x leverage
+
+mode: paper  # backtest | paper | live
+
+exchange:
+  name: binance_futures
+  margin_mode: ISOLATED  # ISOLATED | CROSSED
+  testnet: false  # Set to true for Binance testnet
+
+market:
+  symbol: BTCUSDT
+  timeframe: 15m  # Primary timeframe for signals
+  contract_type: perpetual  # perpetual | quarterly
+
+strategy:
+  name: bb_mean_reversion
+  params:
+    # Bollinger Bands configuration
+    bb_period: 20  # Number of candles for BB calculation
+    bb_std: 2.0    # Standard deviation multiplier (2.0 = 2 sigma)
+
+    # Entry filters
+    volume_filter_multiplier: 0.1  # Require 15m volume > 10% of 24h average
+    min_spread_bps: 0.5    # Reject if spread > 0.05%
+    max_spread_bps: 50.0   # Reject if spread > 0.5% (anomaly)
+
+    # ATR for volatility-based filters and targets
+    atr_period: 14
+    max_atr_multiplier: 3.0  # Pause if ATR spikes >3x recent average
+
+    # Mean reversion specific
+    bb_touch_threshold: 0.998  # Enter if price >= 99.8% of upper band (or <= for lower)
+    require_volume_spike: true  # Require volume > 1.5x average on signal candle
+    volume_spike_multiplier: 1.5
+
+risk:
+  # Capital management
+  starting_capital: 50.0  # Starting balance in USDT
+  max_position_size_pct: 50.0  # Use 50% of equity per trade (user's proven method)
+
+  # Leverage (USER'S AGGRESSIVE METHOD)
+  max_leverage: 20  # 20x leverage (user's manual approach)
+  hard_leverage_cap: 25  # Absolute maximum, safety override
+
+  # Position limits
+  max_concurrent_positions: 1  # Only 1 position at a time (50% capital allocation)
+  max_trades_per_day: 20
+
+  # Stop-loss (automated version of user's manual cut)
+  # User manually exits at -20-30% of position value
+  stop_loss_pct: 25.0  # 25% of position value (≈1.25% price move at 20x leverage)
+  # At 20x leverage, 25% position loss = 1.25% price move, which is ~10-12.5% of account
+
+  # Liquidation protection
+  liquidation_buffer_pct: 70.0  # Emergency exit at 70% of liquidation price
+
+  # Account-level limits
+  max_daily_loss_pct: 30.0  # Stop trading if down 30% on the day
+  max_drawdown_pct: 50.0    # Disable bot if drawdown from peak > 50%
+
+  # Consecutive loss handling
+  max_consecutive_losses: 4
+  consecutive_loss_size_reduction: 0.5  # Reduce next trade size by 50% after 4 losses
+
+  # Time-based risk
+  max_position_duration_minutes: 240  # Force close after 4 hours if stagnant
+
+execution:
+  # Order types
+  order_type: LIMIT  # LIMIT | MARKET (prefer LIMIT for better fills)
+  limit_order_timeout_sec: 30
+  retry_on_timeout: true
+  max_retries: 1
+
+  # Execution preferences
+  post_only: false  # Allow taker fees (faster fills)
+  reduce_only_exits: true  # Mark exits as reduce-only for safety
+
+  # Price offset for limit orders (to improve fill probability)
+  limit_order_offset_bps: 2.0  # Place limit 0.02% through the spread
+
+profit_targets:
+  # User's manual method: 5-100% adaptive targets
+  # Automated approximation using multi-level take-profits
+  mode: adaptive  # adaptive | fixed
+
+  # Multi-level take-profit (scale out at each level)
+  levels:
+    - pct: 5.0      # At +5% profit
+      size_pct: 25  # Close 25% of position
+    - pct: 10.0     # At +10% profit
+      size_pct: 25  # Close 25% of position (50% total closed)
+    - pct: 25.0     # At +25% profit
+      size_pct: 25  # Close 25% of position (75% total closed)
+    - pct: 50.0     # At +50% profit
+      size_pct: 25  # Close 25% of position (100% closed)
+
+  # Trailing stop (after hitting first target)
+  enable_trailing: true
+  trailing_stop_activation: 20.0  # Activate trail after +20% profit
+  trailing_stop_distance_pct: 10.0  # Trail 10% behind peak
+
+session:
+  # Trading hours (UTC)
+  trading_hours: "00:00-23:00"  # Close all positions at 23:00 UTC (configurable)
+  force_close_time: "23:00"     # Force close all open positions
+  timezone: UTC
+
+  # Weekend trading (crypto trades 24/7, but you can disable weekends)
+  trade_weekends: true
+
+data:
+  # Data storage
+  db_path: data/futures_trader.db
+  log_path: logs/
+
+  # Historical data for backtesting
+  backtest_start_date: "2025-10-19"  # 3 months of data
+  backtest_end_date: "2026-01-19"
+
+  # Real-time data collection
+  orderbook_levels: 10  # Collect top 10 bid/ask levels
+  orderbook_update_interval_sec: 5  # Update orderbook every 5 seconds (REST)
+
+  # WebSocket streams
+  enable_websocket: true
+  websocket_streams:
+    - kline  # Real-time candles
+    - ticker  # 24h stats
+    - aggTrade  # Aggregated trades
+
+paper:
+  # Paper trading configuration (SIMULATED EXECUTION)
+  starting_balance: 50.0  # Match live starting capital
+
+  # Simulation realism
+  simulate_slippage: true
+  slippage_bps: 2.0  # 0.02% slippage (realistic for BTC/USDT)
+
+  simulate_partial_fills: true
+  partial_fill_probability: 0.1  # 10% chance of partial fill
+
+  simulate_funding: true
+  funding_interval_hours: 8  # Binance funding every 8 hours
+
+  # Latency simulation
+  simulate_latency: true
+  latency_ms_mean: 50
+  latency_ms_std: 20
+
+fees:
+  # Binance Futures fees (USDT-M)
+  maker: 0.02   # 0.02% maker fee (VIP 0)
+  taker: 0.04   # 0.04% taker fee (VIP 0)
+
+  # Funding rate assumptions (for backtesting)
+  funding_rate_default: 0.01  # 0.01% per 8-hour period (average)
+
+logging:
+  level: INFO  # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: json  # json | text
+
+  # Log rotation
+  max_file_size_mb: 100
+  backup_count: 5
+
+  # Console output
+  console_level: INFO
+  console_format: text  # Human-readable for terminal
+
+alerts:
+  enabled: true
+  channels:
+    - console  # Print alerts to console
+    # Future: email, telegram, webhook
+
+  # Alert on these events
+  on_trade: false  # Don't spam on every trade
+  on_stop_loss: true
+  on_take_profit: false
+  on_kill_switch: true
+  on_daily_loss_limit: true
+  on_max_drawdown: true
+  on_error: true
+
+# Circuit breakers (emergency stops)
+circuit_breakers:
+  enable_all: true
+
+  # Spread anomaly
+  spread_anomaly_bps: 50.0  # Pause if spread > 0.5%
+
+  # Volatility spike
+  volatility_spike_multiplier: 3.0  # Pause if ATR > 3x average
+  volatility_spike_pause_minutes: 60
+
+  # Volume collapse
+  volume_collapse_multiplier: 0.1  # Pause if 15m volume < 10% of 24h avg
+
+  # API instability
+  api_error_rate_threshold: 0.2  # Pause if >20% of requests fail
+  api_error_window_minutes: 5
+
+  # Funding rate shock
+  funding_rate_shock_threshold: 0.5  # Avoid new trades if funding > 0.5%
+
+  # Consecutive stop-losses
+  consecutive_stop_loss_limit: 3  # Pause after 3 consecutive stops in 1 hour
+  consecutive_stop_loss_pause_minutes: 60
+
+# Kill switch (complete shutdown)
+kill_switch:
+  enable: true
+
+  # Automatic triggers
+  on_liquidation: true  # Shut down if liquidation occurs (even paper mode)
+  on_max_drawdown: true  # Shut down if max drawdown exceeded
+  on_daily_loss_exceeded: true  # Shut down if daily loss limit exceeded
+  on_repeated_errors: true  # Shut down if 10+ consecutive errors
+
+  # Manual trigger
+  emergency_file: .KILL_SWITCH  # Create this file to trigger emergency shutdown
+
+  # Action on trigger
+  close_all_positions: true  # Close all open positions before shutdown
+  cancel_all_orders: true    # Cancel all open orders
+
+# Live trading safety checks (only applies in live mode)
+live_safety:
+  # Pre-flight checks before enabling live trading
+  require_paper_trading_days: 7  # Must run 7+ days of paper trading first
+  require_paper_positive_pnl: false  # Don't require profit (optional: true)
+  require_max_drawdown_check: true  # Paper drawdown must be < 50%
+
+  # Confirmation
+  require_user_confirmation: true  # Prompt user before first live trade
+
+  # Gradual ramp-up (optional)
+  start_with_reduced_size: false  # Start live at 50% of config position size
+  reduced_size_multiplier: 0.5
+  reduced_size_trades: 10  # Use reduced size for first 10 trades
