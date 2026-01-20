@@ -175,6 +175,9 @@ class PaperTrader:
         self.running = False
         self.last_funding_time = time.time()
 
+        # Track session starting equity for account-level profit targets
+        self.session_starting_equity = config.paper.starting_balance
+
         self.logger.info(f"Paper Trader initialized with ${config.paper.starting_balance} virtual balance")
 
     def run(self) -> None:
@@ -354,9 +357,6 @@ class PaperTrader:
         # Store stop-loss for this position (for checking later)
         self.account.positions[position_id]['stop_price'] = position_params['stop_price']
 
-        # Store starting equity for account-based profit targets
-        self.account.positions[position_id]['starting_equity'] = self.account.get_equity()
-
         # Calculate and store take-profit levels
         atr_value = signal.indicators.get('atr', 500)  # Default ATR if not available
         tp_levels = self.strategy.calculate_take_profit_levels(
@@ -389,24 +389,46 @@ class PaperTrader:
                     self._close_position(position_id, current_price, "stop_loss")
                     continue
 
-            # ACCOUNT-BASED PROFIT TARGETS (for small accounts < $100)
-            # Focus on 3-5% account equity gains rather than huge position targets
-            current_equity = self.account.get_equity()
-            starting_equity = pos.get('starting_equity', self.account.starting_balance)
+        # ACCOUNT-BASED PROFIT TARGETS (for small accounts < $100)
+        # Check once per iteration if SESSION-LEVEL profit target is hit
+        # Focus on 3-5% account equity gains rather than huge position targets
+        current_equity = self.account.get_equity()
+        session_equity_gain_pct = ((current_equity - self.session_starting_equity) / self.session_starting_equity) * 100
 
-            if current_equity < 100:
-                # Small account: check account equity % gain
-                equity_gain_pct = ((current_equity - starting_equity) / starting_equity) * 100
+        # Close ALL positions if account-level target is hit
+        if self.session_starting_equity < 100 and session_equity_gain_pct >= 3.0:
+            # Small account: hit 3% session gain
+            self.logger.info(f"🎯 Account profit target hit: {session_equity_gain_pct:.1f}% gain, closing all positions")
+            for pos in list(self.account.get_open_positions()):
+                self._close_position(pos['position_id'], current_price, f"session_target_{session_equity_gain_pct:.1f}%")
+            return  # Exit early, all positions closed
 
-                if equity_gain_pct >= 3.0:  # Hit 3% account gain
-                    self._close_position(position_id, current_price, f"account_target_{equity_gain_pct:.1f}%")
-                    continue
-            elif current_equity < 500:
-                # Medium account: check for 5-7% gains
-                equity_gain_pct = ((current_equity - starting_equity) / starting_equity) * 100
+        elif self.session_starting_equity < 500 and session_equity_gain_pct >= 5.0:
+            # Medium account: hit 5% session gain
+            self.logger.info(f"🎯 Account profit target hit: {session_equity_gain_pct:.1f}% gain, closing all positions")
+            for pos in list(self.account.get_open_positions()):
+                self._close_position(pos['position_id'], current_price, f"session_target_{session_equity_gain_pct:.1f}%")
+            return  # Exit early, all positions closed
 
-                if equity_gain_pct >= 5.0:  # Hit 5% account gain
-                    self._close_position(position_id, current_price, f"account_target_{equity_gain_pct:.1f}%")
+        # Now check individual position management (stops, position-based targets, time exits)
+        for pos in list(self.account.get_open_positions()):
+            position_id = pos['position_id']
+
+            # Check liquidation
+            if is_near_liquidation(current_price, pos['liquidation_price'], pos['side'], threshold_pct=1.0):
+                self.logger.critical(f"⚠️ Position {position_id} near liquidation!")
+
+            # Check stop-loss
+            stop_price = pos.get('stop_price')
+            if stop_price:
+                stop_hit = False
+                if pos['side'] == 'LONG' and current_price <= stop_price:
+                    stop_hit = True
+                elif pos['side'] == 'SHORT' and current_price >= stop_price:
+                    stop_hit = True
+
+                if stop_hit:
+                    self._close_position(position_id, current_price, "stop_loss")
                     continue
 
             # Check take-profit levels (position-based, for larger accounts)
@@ -635,7 +657,7 @@ class PaperTrader:
             'balance': self.account.balance,
             'unrealized_pnl': self.account.unrealized_pnl,
             'margin_used': self.account.margin_used,
-            'margin_available': equity - self.account.margin_used,
+            'margin_available': self.account.balance,  # Free balance available for new trades
             'open_positions': len(self.account.get_open_positions()),
             'daily_pnl': self.risk_mgr.daily_pnl,
             'drawdown_pct': ((self.risk_mgr.peak_equity - equity) / self.risk_mgr.peak_equity) * 100

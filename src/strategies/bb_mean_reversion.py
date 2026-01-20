@@ -153,7 +153,8 @@ class BBMeanReversionStrategy:
         reason = ""
 
         # LONG signal: Price touches or breaks below lower BB
-        if current_price <= latest['bb_lower'] * (2 - self.bb_touch_threshold):
+        # bb_touch_threshold = 0.998 means trigger when price <= 99.8% of lower band
+        if current_price <= latest['bb_lower'] * self.bb_touch_threshold:
             # Price is at or below lower band (mean reversion opportunity)
             signal_side = "LONG"
 
@@ -174,7 +175,8 @@ class BBMeanReversionStrategy:
             reason = f"Price touched lower BB (${latest['bb_lower']:.2f}), expecting mean reversion"
 
         # SHORT signal: Price touches or breaks above upper BB
-        elif current_price >= latest['bb_upper'] * self.bb_touch_threshold:
+        # bb_touch_threshold = 0.998 means trigger when price >= upper_band / 0.998 (100.2% of upper band)
+        elif current_price >= latest['bb_upper'] / self.bb_touch_threshold:
             # Price is at or above upper band (mean reversion opportunity)
             signal_side = "SHORT"
 

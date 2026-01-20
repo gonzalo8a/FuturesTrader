@@ -71,7 +71,8 @@ def rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
 
-    rs = gain / loss
+    # Avoid division by zero
+    rs = gain / loss.replace(0, 1e-10)  # Replace 0 with tiny number
     rsi_values = 100 - (100 / (1 + rs))
 
     return rsi_values
@@ -112,7 +113,10 @@ def percent_b(prices: pd.Series, upper: pd.Series, lower: pd.Series) -> pd.Serie
         - 0.5 = at middle band
         - < 0.0 = below lower band
     """
-    return (prices - lower) / (upper - lower)
+    # Avoid division by zero when bands converge
+    band_width = upper - lower
+    band_width = band_width.replace(0, 1e-10)  # Replace 0 with tiny number
+    return (prices - lower) / band_width
 
 
 def bb_width(upper: pd.Series, lower: pd.Series, middle: pd.Series) -> pd.Series:
@@ -122,7 +126,9 @@ def bb_width(upper: pd.Series, lower: pd.Series, middle: pd.Series) -> pd.Series
     Returns:
         BB Width as percentage
     """
-    return ((upper - lower) / middle) * 100
+    # Avoid division by zero if middle price is somehow 0
+    safe_middle = middle.replace(0, 1e-10)
+    return ((upper - lower) / safe_middle) * 100
 
 
 def volume_sma(volume: pd.Series, period: int = 20) -> pd.Series:
