@@ -36,8 +36,8 @@ class VirtualAccount:
         self.positions: Dict[str, Dict] = {}  # position_id -> position data
 
     def get_equity(self) -> float:
-        """Get current equity (balance + unrealized PnL)."""
-        return self.balance + self.unrealized_pnl
+        """Get current equity (balance + margin in use + unrealized PnL)."""
+        return self.balance + self.margin_used + self.unrealized_pnl
 
     def get_position_by_symbol(self, symbol: str) -> Optional[Dict]:
         """Get open position for symbol."""
@@ -72,6 +72,8 @@ class VirtualAccount:
             'opened_at': int(time.time() * 1000),
             'updated_at': int(time.time() * 1000),
         }
+        # Lock margin from available balance
+        self.balance -= margin
         self.margin_used += margin
 
     def close_position(
@@ -130,7 +132,7 @@ class VirtualAccount:
                     total_unrealized += unrealized
 
         self.unrealized_pnl = total_unrealized
-        self.equity = self.balance + self.unrealized_pnl
+        self.equity = self.balance + self.margin_used + self.unrealized_pnl
 
     def get_open_positions(self) -> List[Dict]:
         """Get all open positions."""
