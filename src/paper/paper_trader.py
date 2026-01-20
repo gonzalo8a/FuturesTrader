@@ -336,6 +336,9 @@ class PaperTrader:
         # Store stop-loss for this position (for checking later)
         self.account.positions[position_id]['stop_price'] = position_params['stop_price']
 
+        # Store starting equity for account-based profit targets
+        self.account.positions[position_id]['starting_equity'] = self.account.get_equity()
+
         # Calculate and store take-profit levels
         atr_value = signal.indicators.get('atr', 500)  # Default ATR if not available
         tp_levels = self.strategy.calculate_take_profit_levels(
@@ -368,7 +371,27 @@ class PaperTrader:
                     self._close_position(position_id, current_price, "stop_loss")
                     continue
 
-            # Check take-profit levels
+            # ACCOUNT-BASED PROFIT TARGETS (for small accounts < $100)
+            # Focus on 3-5% account equity gains rather than huge position targets
+            current_equity = self.account.get_equity()
+            starting_equity = pos.get('starting_equity', self.account.starting_balance)
+
+            if current_equity < 100:
+                # Small account: check account equity % gain
+                equity_gain_pct = ((current_equity - starting_equity) / starting_equity) * 100
+
+                if equity_gain_pct >= 3.0:  # Hit 3% account gain
+                    self._close_position(position_id, current_price, f"account_target_{equity_gain_pct:.1f}%")
+                    continue
+            elif current_equity < 500:
+                # Medium account: check for 5-7% gains
+                equity_gain_pct = ((current_equity - starting_equity) / starting_equity) * 100
+
+                if equity_gain_pct >= 5.0:  # Hit 5% account gain
+                    self._close_position(position_id, current_price, f"account_target_{equity_gain_pct:.1f}%")
+                    continue
+
+            # Check take-profit levels (position-based, for larger accounts)
             tp_levels = pos.get('tp_levels', [])
             tp_hit = pos.get('tp_hit', [False] * len(tp_levels))
 
