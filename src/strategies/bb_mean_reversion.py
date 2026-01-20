@@ -75,7 +75,10 @@ class BBMeanReversionStrategy:
         self,
         df: pd.DataFrame,
         current_price: float,
-        orderbook: Optional[Dict] = None
+        orderbook: Optional[Dict] = None,
+        daily_candles: Optional[pd.DataFrame] = None,
+        recent_trades: Optional[List] = None,
+        recent_liquidations: Optional[List] = None
     ) -> Optional[Signal]:
         """
         Generate trading signal based on Bollinger Band mean reversion.
@@ -84,6 +87,9 @@ class BBMeanReversionStrategy:
             df: DataFrame with OHLCV data (columns: timestamp, open, high, low, close, volume)
             current_price: Current market price
             orderbook: Optional orderbook data for spread check
+            daily_candles: Optional daily timeframe data for trend bias
+            recent_trades: Optional recent trades for order flow analysis
+            recent_liquidations: Optional liquidation data
 
         Returns:
             Signal object if conditions met, None otherwise
@@ -197,6 +203,110 @@ class BBMeanReversionStrategy:
         # Confidence threshold
         if confidence < 0.5:
             return None  # Signal not strong enough
+
+        # === ENHANCED FILTERS (NEW!) ===
+
+        # FILTER 1: DAILY TREND BIAS (favor shorts on red days)
+        if daily_candles is not None and len(daily_candles) > 0:
+            latest_daily = daily_candles.iloc[-1]
+            daily_open = latest_daily['open']
+            daily_close = latest_daily['close']
+            daily_is_red = daily_close < daily_open
+            daily_change_pct = ((daily_close - daily_open) / daily_open) * 100
+
+            # Strong red day (< -2%)
+            if daily_is_red and daily_change_pct < -2.0:
+                if signal_side == "LONG":
+                    # Be very selective on LONG signals during red days
+                    if confidence < 0.75:  # Only take high-confidence LONGs
+                        return None  # Skip weak LONG on red day
+                    else:
+                        # Reduce confidence even for strong signals
+                        confidence = max(confidence - 0.2, 0.5)
+                        reason += " (RED DAY - reduced confidence)"
+                elif signal_side == "SHORT":
+                    # Favor SHORT signals on red days (align with trend)
+                    confidence = min(confidence + 0.15, 1.0)
+                    reason += " (RED DAY - trend aligned)"
+
+            # Strong green day (> +2%)
+            elif not daily_is_red and daily_change_pct > 2.0:
+                if signal_side == "SHORT":
+                    # Be selective on SHORT signals during green days
+                    if confidence < 0.75:
+                        return None  # Skip weak SHORT on green day
+                    else:
+                        confidence = max(confidence - 0.2, 0.5)
+                        reason += " (GREEN DAY - reduced confidence)"
+                elif signal_side == "LONG":
+                    # Favor LONG signals on green days
+                    confidence = min(confidence + 0.15, 1.0)
+                    reason += " (GREEN DAY - trend aligned)"
+
+        # FILTER 2: ORDER FLOW ANALYSIS (aggressive buy/sell pressure)
+        if recent_trades is not None and len(recent_trades) > 0:
+            buy_volume = 0
+            sell_volume = 0
+
+            for trade in recent_trades:
+                qty = float(trade['qty'])
+                # If buyer is maker, it's a sell (hit bid = aggressive sell)
+                # If buyer is taker, it's a buy (hit ask = aggressive buy)
+                if trade['isBuyerMaker']:
+                    sell_volume += qty
+                else:
+                    buy_volume += qty
+
+            total_volume = buy_volume + sell_volume
+            if total_volume > 0:
+                buy_pressure = buy_volume / total_volume
+
+                # Check order flow alignment
+                if signal_side == "LONG" and buy_pressure < 0.35:
+                    # Want to LONG but 65%+ selling pressure
+                    return None  # Skip LONG - strong selling
+                elif signal_side == "SHORT" and buy_pressure > 0.65:
+                    # Want to SHORT but 65%+ buying pressure
+                    return None  # Skip SHORT - strong buying
+
+                # Adjust confidence based on order flow
+                if signal_side == "LONG" and buy_pressure > 0.6:
+                    confidence = min(confidence + 0.1, 1.0)  # Buy pressure confirms LONG
+                    reason += f" (buy pressure: {buy_pressure:.0%})"
+                elif signal_side == "SHORT" and buy_pressure < 0.4:
+                    confidence = min(confidence + 0.1, 1.0)  # Sell pressure confirms SHORT
+                    reason += f" (sell pressure: {1-buy_pressure:.0%})"
+
+        # FILTER 3: LIQUIDATION CLUSTER DETECTOR
+        if recent_liquidations is not None and len(recent_liquidations) > 0:
+            import time
+            now = time.time() * 1000
+            recent_long_liqs = 0
+            recent_short_liqs = 0
+
+            # Count liquidations in last 15 minutes
+            for liq in recent_liquidations:
+                if liq.get('time', 0) > now - 900000:  # Last 15 min
+                    if liq['side'] == 'SELL':  # LONG position liquidated
+                        recent_long_liqs += 1
+                    else:  # SHORT position liquidated
+                        recent_short_liqs += 1
+
+            # If many LONG liquidations, price is dropping (cascade)
+            if recent_long_liqs >= 5 and signal_side == "LONG":
+                return None  # Don't LONG into liquidation cascade
+
+            # If many SHORT liquidations, price is pumping (short squeeze)
+            if recent_short_liqs >= 5 and signal_side == "SHORT":
+                return None  # Don't SHORT into short squeeze
+
+            # Adjust confidence if moderate liquidations
+            if recent_long_liqs >= 2 and signal_side == "SHORT":
+                confidence = min(confidence + 0.1, 1.0)  # LONGs getting rekt, favor SHORT
+                reason += f" ({recent_long_liqs} long liqs)"
+            elif recent_short_liqs >= 2 and signal_side == "LONG":
+                confidence = min(confidence + 0.1, 1.0)  # SHORTs getting rekt, favor LONG
+                reason += f" ({recent_short_liqs} short liqs)"
 
         # Create signal
         signal = Signal(

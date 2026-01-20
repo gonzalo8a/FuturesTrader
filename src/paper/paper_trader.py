@@ -234,7 +234,7 @@ class PaperTrader:
     def _check_for_signals(self, current_price: float) -> None:
         """Check for new trading signals."""
         try:
-            # Fetch recent candle data
+            # Fetch recent candle data (15m)
             df = self._get_recent_candles()
 
             if df is None or len(df) < 50:
@@ -243,8 +243,24 @@ class PaperTrader:
             # Get orderbook for spread check
             orderbook = self.client.get_orderbook(self.config.market.symbol, limit=5)
 
-            # Generate signal
-            signal = self.strategy.generate_signal(df, current_price, orderbook)
+            # Fetch daily candles for trend bias
+            daily_df = self._get_daily_candles()
+
+            # Fetch recent trades for order flow analysis
+            recent_trades = self._get_recent_trades()
+
+            # Fetch recent liquidations
+            recent_liquidations = self._get_recent_liquidations()
+
+            # Generate signal with enhanced filters
+            signal = self.strategy.generate_signal(
+                df,
+                current_price,
+                orderbook,
+                daily_candles=daily_df,
+                recent_trades=recent_trades,
+                recent_liquidations=recent_liquidations
+            )
 
             if signal is None:
                 return  # No signal
@@ -535,6 +551,63 @@ class PaperTrader:
 
         except Exception as e:
             self.logger.error(f"Error fetching candles: {e}")
+            return None
+
+    def _get_daily_candles(self) -> Optional[pd.DataFrame]:
+        """Fetch daily candle data for trend bias."""
+        try:
+            klines = self.client.get_klines(
+                self.config.market.symbol,
+                '1d',  # Daily timeframe
+                limit=10
+            )
+
+            df = pd.DataFrame(klines, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                'taker_buy_quote', 'ignore'
+            ])
+
+            df['timestamp'] = pd.to_numeric(df['timestamp'])
+            df['open'] = pd.to_numeric(df['open'])
+            df['high'] = pd.to_numeric(df['high'])
+            df['low'] = pd.to_numeric(df['low'])
+            df['close'] = pd.to_numeric(df['close'])
+            df['volume'] = pd.to_numeric(df['volume'])
+
+            return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+
+        except Exception as e:
+            self.logger.error(f"Error fetching daily candles: {e}")
+            return None
+
+    def _get_recent_trades(self) -> Optional[List]:
+        """Fetch recent trades for order flow analysis."""
+        try:
+            # Fetch last 100 trades
+            trades = self.client._request('GET', '/fapi/v1/trades', params={
+                'symbol': self.config.market.symbol,
+                'limit': 100
+            }, weight=1)
+            return trades
+
+        except Exception as e:
+            self.logger.error(f"Error fetching recent trades: {e}")
+            return None
+
+    def _get_recent_liquidations(self) -> Optional[List]:
+        """Fetch recent liquidation orders."""
+        try:
+            # Fetch recent forced liquidation orders
+            liquidations = self.client._request('GET', '/fapi/v1/allForceOrders', params={
+                'symbol': self.config.market.symbol,
+                'limit': 50
+            }, weight=1)
+            return liquidations
+
+        except Exception as e:
+            # Liquidation endpoint sometimes fails, that's okay
+            self.logger.debug(f"Error fetching liquidations: {e}")
             return None
 
     def _log_performance(self) -> None:
