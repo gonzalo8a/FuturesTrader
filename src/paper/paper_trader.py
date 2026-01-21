@@ -550,12 +550,14 @@ class PaperTrader:
             self.last_funding_time = time.time()
 
     def _get_recent_candles(self) -> Optional[pd.DataFrame]:
-        """Fetch recent candle data."""
+        """Fetch recent candle data (1 week for proper indicator calculation)."""
         try:
+            # Fetch 1 week of data: 7 days * 24 hours * 4 (15m candles/hour) = 672
+            # Using 700 for buffer
             klines = self.client.get_klines(
                 self.config.market.symbol,
                 self.config.market.timeframe,
-                limit=100
+                limit=700
             )
 
             df = pd.DataFrame(klines, columns=[
@@ -578,12 +580,12 @@ class PaperTrader:
             return None
 
     def _get_daily_candles(self) -> Optional[pd.DataFrame]:
-        """Fetch daily candle data for trend bias."""
+        """Fetch daily candle data for trend bias (30 days of context)."""
         try:
             klines = self.client.get_klines(
                 self.config.market.symbol,
                 '1d',  # Daily timeframe
-                limit=10
+                limit=30  # Increased from 10 for better trend analysis
             )
 
             df = pd.DataFrame(klines, columns=[

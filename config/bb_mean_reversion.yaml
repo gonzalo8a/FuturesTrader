@@ -16,22 +16,22 @@ market:
 strategy:
   name: bb_mean_reversion
   params:
-    # Bollinger Bands configuration
-    bb_period: 20  # Number of candles for BB calculation
-    bb_std: 2.0    # Standard deviation multiplier (2.0 = 2 sigma)
+    # Bollinger Bands configuration (AGGRESSIVE SETTINGS)
+    bb_period: 15  # Reduced from 20 for faster signals
+    bb_std: 1.5    # Reduced from 2.0 for tighter bands (more signals)
 
-    # Entry filters
-    volume_filter_multiplier: 0.1  # Require 15m volume > 10% of 24h average
+    # Entry filters (RELAXED)
+    volume_filter_multiplier: 0.05  # Reduced from 0.1 (only need 5% of avg volume)
     min_spread_bps: 0.5    # Reject if spread > 0.05%
     max_spread_bps: 50.0   # Reject if spread > 0.5% (anomaly)
 
     # ATR for volatility-based filters and targets
     atr_period: 14
-    max_atr_multiplier: 3.0  # Pause if ATR spikes >3x recent average
+    max_atr_multiplier: 5.0  # Increased from 3.0 (allow more volatility)
 
-    # Mean reversion specific
-    bb_touch_threshold: 0.998  # Enter if price >= 99.8% of upper band (or <= for lower)
-    require_volume_spike: true  # Require volume > 1.5x average on signal candle
+    # Mean reversion specific (MORE AGGRESSIVE)
+    bb_touch_threshold: 0.90  # Enter at 90% of band distance (was 0.998)
+    require_volume_spike: false  # Disabled - don't require volume confirmation
     volume_spike_multiplier: 1.5
 
 risk:

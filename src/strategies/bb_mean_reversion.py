@@ -202,13 +202,13 @@ class BBMeanReversionStrategy:
         if self.require_volume_spike and not latest['volume_spike']:
             return None  # Require volume confirmation
 
-        # Confidence threshold
-        if confidence < 0.5:
+        # Confidence threshold (RELAXED - was 0.5, now 0.3)
+        if confidence < 0.3:
             return None  # Signal not strong enough
 
-        # === ENHANCED FILTERS (NEW!) ===
+        # === ENHANCED FILTERS (RELAXED FOR AGGRESSIVE TRADING) ===
 
-        # FILTER 1: DAILY TREND BIAS (favor shorts on red days)
+        # FILTER 1: DAILY TREND BIAS (RELAXED - only block on extreme moves)
         if daily_candles is not None and len(daily_candles) > 0:
             latest_daily = daily_candles.iloc[-1]
             daily_open = latest_daily['open']
@@ -216,36 +216,29 @@ class BBMeanReversionStrategy:
             daily_is_red = daily_close < daily_open
             daily_change_pct = ((daily_close - daily_open) / daily_open) * 100
 
-            # Strong red day (< -2%)
-            if daily_is_red and daily_change_pct < -2.0:
+            # Only filter on EXTREME moves (> 5%, was 2%)
+            if daily_is_red and daily_change_pct < -5.0:
                 if signal_side == "LONG":
-                    # Be very selective on LONG signals during red days
-                    if confidence < 0.75:  # Only take high-confidence LONGs
-                        return None  # Skip weak LONG on red day
-                    else:
-                        # Reduce confidence even for strong signals
-                        confidence = max(confidence - 0.2, 0.5)
-                        reason += " (RED DAY - reduced confidence)"
+                    # Reduce confidence on LONG signals during extreme red days
+                    confidence = max(confidence - 0.15, 0.3)
+                    reason += " (EXTREME RED DAY)"
                 elif signal_side == "SHORT":
-                    # Favor SHORT signals on red days (align with trend)
-                    confidence = min(confidence + 0.15, 1.0)
-                    reason += " (RED DAY - trend aligned)"
+                    # Favor SHORT signals on red days
+                    confidence = min(confidence + 0.1, 1.0)
+                    reason += " (EXTREME RED DAY - trend aligned)"
 
-            # Strong green day (> +2%)
-            elif not daily_is_red and daily_change_pct > 2.0:
+            # Extreme green day (> +5%, was 2%)
+            elif not daily_is_red and daily_change_pct > 5.0:
                 if signal_side == "SHORT":
-                    # Be selective on SHORT signals during green days
-                    if confidence < 0.75:
-                        return None  # Skip weak SHORT on green day
-                    else:
-                        confidence = max(confidence - 0.2, 0.5)
-                        reason += " (GREEN DAY - reduced confidence)"
+                    # Reduce confidence on SHORT signals during extreme green days
+                    confidence = max(confidence - 0.15, 0.3)
+                    reason += " (EXTREME GREEN DAY)"
                 elif signal_side == "LONG":
                     # Favor LONG signals on green days
-                    confidence = min(confidence + 0.15, 1.0)
-                    reason += " (GREEN DAY - trend aligned)"
+                    confidence = min(confidence + 0.1, 1.0)
+                    reason += " (EXTREME GREEN DAY - trend aligned)"
 
-        # FILTER 2: ORDER FLOW ANALYSIS (aggressive buy/sell pressure)
+        # FILTER 2: ORDER FLOW ANALYSIS (RELAXED - only block on extreme imbalance)
         if recent_trades is not None and len(recent_trades) > 0:
             buy_volume = 0
             sell_volume = 0
@@ -263,13 +256,13 @@ class BBMeanReversionStrategy:
             if total_volume > 0:
                 buy_pressure = buy_volume / total_volume
 
-                # Check order flow alignment
-                if signal_side == "LONG" and buy_pressure < 0.35:
-                    # Want to LONG but 65%+ selling pressure
-                    return None  # Skip LONG - strong selling
-                elif signal_side == "SHORT" and buy_pressure > 0.65:
-                    # Want to SHORT but 65%+ buying pressure
-                    return None  # Skip SHORT - strong buying
+                # Check order flow alignment (RELAXED - was 0.35/0.65, now 0.20/0.80)
+                if signal_side == "LONG" and buy_pressure < 0.20:
+                    # Want to LONG but 80%+ selling pressure (was 65%)
+                    return None  # Skip LONG - extreme selling
+                elif signal_side == "SHORT" and buy_pressure > 0.80:
+                    # Want to SHORT but 80%+ buying pressure (was 65%)
+                    return None  # Skip SHORT - extreme buying
 
                 # Adjust confidence based on order flow
                 if signal_side == "LONG" and buy_pressure > 0.6:
@@ -279,7 +272,7 @@ class BBMeanReversionStrategy:
                     confidence = min(confidence + 0.1, 1.0)  # Sell pressure confirms SHORT
                     reason += f" (sell pressure: {1-buy_pressure:.0%})"
 
-        # FILTER 3: LIQUIDATION CLUSTER DETECTOR
+        # FILTER 3: LIQUIDATION CLUSTER DETECTOR (RELAXED - higher thresholds)
         if recent_liquidations is not None and len(recent_liquidations) > 0:
             import time
             now = time.time() * 1000
@@ -294,19 +287,19 @@ class BBMeanReversionStrategy:
                     else:  # SHORT position liquidated
                         recent_short_liqs += 1
 
-            # If many LONG liquidations, price is dropping (cascade)
-            if recent_long_liqs >= 5 and signal_side == "LONG":
+            # Only block on extreme liquidation cascades (was 5, now 10)
+            if recent_long_liqs >= 10 and signal_side == "LONG":
                 return None  # Don't LONG into liquidation cascade
 
-            # If many SHORT liquidations, price is pumping (short squeeze)
-            if recent_short_liqs >= 5 and signal_side == "SHORT":
+            # If many SHORT liquidations, price is pumping (was 5, now 10)
+            if recent_short_liqs >= 10 and signal_side == "SHORT":
                 return None  # Don't SHORT into short squeeze
 
             # Adjust confidence if moderate liquidations
-            if recent_long_liqs >= 2 and signal_side == "SHORT":
+            if recent_long_liqs >= 3 and signal_side == "SHORT":
                 confidence = min(confidence + 0.1, 1.0)  # LONGs getting rekt, favor SHORT
                 reason += f" ({recent_long_liqs} long liqs)"
-            elif recent_short_liqs >= 2 and signal_side == "LONG":
+            elif recent_short_liqs >= 3 and signal_side == "LONG":
                 confidence = min(confidence + 0.1, 1.0)  # SHORTs getting rekt, favor LONG
                 reason += f" ({recent_short_liqs} short liqs)"
 
