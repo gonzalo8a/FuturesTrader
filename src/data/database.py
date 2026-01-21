@@ -24,6 +24,7 @@ class Database:
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._create_tables()
+        self._migrate_schema()
 
     @contextmanager
     def get_connection(self):
@@ -191,6 +192,22 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_events_timestamp
                 ON events(timestamp DESC)
             """)
+
+    def _migrate_schema(self) -> None:
+        """Migrate database schema for existing databases."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Check if current_price column exists in account_snapshots
+            cursor.execute("PRAGMA table_info(account_snapshots)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'current_price' not in columns:
+                # Add current_price column to existing table
+                cursor.execute("""
+                    ALTER TABLE account_snapshots ADD COLUMN current_price REAL
+                """)
+                print("✓ Database migrated: Added current_price column to account_snapshots")
 
     def insert_candle(
         self,
