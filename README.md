@@ -1,864 +1,931 @@
-# 🚀 FuturesTrader - Automated Cryptocurrency Futures Day Trading Bot
+# FuturesTrader: An Automated Cryptocurrency Futures Trading System
 
-An advanced, automated trading bot for Binance USDT-M Futures that implements a **proven Bollinger Band mean reversion strategy** with comprehensive risk management, real-time market analysis, and intelligent trade execution.
+**Version 1.1**
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**Abstract**
 
----
-
-## ⚠️ CRITICAL DISCLAIMER
-
-**THIS BOT TRADES REAL MONEY ON LEVERAGED FUTURES CONTRACTS**
-
-- You can lose **ALL** your capital
-- Futures trading with leverage amplifies both gains AND losses
-- This bot is provided AS-IS with **NO WARRANTY**
-- The developers are **NOT responsible** for any financial losses
-- **ALWAYS start with paper trading mode**
-- Test thoroughly for at least 7 days before considering live trading
-- Only trade with money you can afford to lose completely
-
-**USE AT YOUR OWN RISK**
+This paper presents FuturesTrader, an automated trading system for cryptocurrency futures markets implementing a Bollinger Band mean reversion strategy with multi-factor signal filtering and comprehensive risk management. The system operates on Binance USDT-M Futures, utilizing 20x leverage with isolated margin mode. We describe the architecture, implementation, risk management framework, and provide empirical analysis of the strategy's theoretical foundations. The system incorporates real-time market microstructure analysis including order flow dynamics and liquidation cascade detection.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Features](#features)
-- [Architecture Overview](#architecture-overview)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Module Documentation](#module-documentation)
-- [Strategy Explanation](#strategy-explanation)
-- [Risk Management](#risk-management)
-- [Advanced Features](#advanced-features)
-- [Optimization Tips](#optimization-tips)
-- [Troubleshooting](#troubleshooting)
-- [Bug Fixes & Changelog](#bug-fixes--changelog)
+1. [Introduction](#1-introduction)
+2. [System Architecture](#2-system-architecture)
+3. [Methodology](#3-methodology)
+4. [Implementation](#4-implementation)
+5. [Risk Management Framework](#5-risk-management-framework)
+6. [Installation and Configuration](#6-installation-and-configuration)
+7. [Experimental Results](#7-experimental-results)
+8. [Discussion](#8-discussion)
+9. [Conclusion](#9-conclusion)
+10. [Appendices](#10-appendices)
 
 ---
 
-## ✨ Features
+## 1. Introduction
 
-### Core Functionality
-- ✅ **Paper Trading Mode**: Risk-free simulation with real market data
-- ✅ **Live Trading Mode**: Automated execution on Binance Futures
-- ✅ **Bollinger Band Mean Reversion**: Proven strategy for BTC/USDT
-- ✅ **20x Leverage Support**: Configurable leverage with safety caps
-- ✅ **Isolated Margin Mode**: Each position independent, limiting risk
+### 1.1 Background
 
-### Intelligent Signal Generation
-- 📊 **Multi-Timeframe Analysis**: 15m candles for signals, 1d for trend bias
-- 📉 **Daily Trend Filter**: Favor shorts on red days, longs on green days
-- 💹 **Order Flow Analysis**: Real-time buy/sell pressure from last 100 trades
-- ⚡ **Liquidation Cluster Detection**: Avoid cascades, exploit opposite-side liquidity
-- 🎯 **Confidence Scoring**: Dynamic confidence based on market conditions
+Cryptocurrency futures markets exhibit high volatility and leverage characteristics that present both opportunities and risks for algorithmic trading strategies. Mean reversion strategies, particularly those based on Bollinger Bands, have demonstrated effectiveness in oscillating markets by exploiting temporary price deviations from statistical norms.
 
-### Advanced Risk Management
-- 🛡️ **Stop-Loss Automation**: Percentage-based stops with liquidation awareness
-- 🎚️ **Position Sizing**: Dynamic sizing based on equity and risk tolerance
-- 📊 **Account-Based Profit Targets**: 3% for <$100 accounts, 5% for $100-$500
-- 🔄 **Position-Based Targets**: Scaled exits at 5%, 10%, 25%, 50% for larger accounts
-- ⏱️ **Time-Based Exits**: Maximum position duration (default 12 hours)
-- 🚨 **Circuit Breakers**: Auto-stop on excessive spread, low volume, or API errors
-- 💀 **Kill Switch**: Emergency shutdown on liquidation or critical errors
+### 1.2 Objectives
 
-### Data & Analytics
-- 💾 **SQLite Database**: Full trade history, account snapshots, events
-- 📈 **Performance Tracking**: Real-time PnL, drawdown, win rate
-- 📝 **Detailed Logging**: Structured JSON logs for analysis
-- 🔍 **Trade Audit Trail**: Complete record of all decisions and executions
+The primary objectives of this system are:
+
+- Automate a proven manual trading strategy based on Bollinger Band mean reversion
+- Implement comprehensive risk management to prevent catastrophic capital loss
+- Provide multi-factor signal filtering to improve trade quality
+- Enable paper trading simulation for strategy validation
+- Maintain detailed audit trails for performance analysis
+
+### 1.3 Critical Risk Disclosure
+
+This system trades leveraged futures contracts with potential for complete capital loss. Key risks include:
+
+- Liquidation risk from adverse price movements
+- Leverage amplification of both gains and losses
+- Market microstructure risks (slippage, spread widening)
+- Systemic risks (exchange outages, flash crashes)
+- Counterparty risks inherent to centralized exchanges
+
+Users must thoroughly test in paper trading mode for minimum 7 days before live deployment and only allocate capital they can afford to lose entirely.
 
 ---
 
-## 🏗️ Architecture Overview
+## 2. System Architecture
+
+### 2.1 Overview
+
+The system employs a modular architecture separating concerns of data acquisition, strategy logic, risk management, and execution. Figure 2.1 illustrates the system components and data flow.
 
 ```
-FuturesTrader/
-├── src/
-│   ├── data/              # Data fetching & storage
-│   │   ├── binance_client.py   # Binance API wrapper with rate limiting
-│   │   └── database.py          # SQLite operations
-│   ├── strategies/        # Trading strategies & indicators
-│   │   ├── bb_mean_reversion.py # Main strategy implementation
-│   │   └── indicators.py        # Technical indicators (BB, RSI, ATR, etc.)
-│   ├── risk/              # Risk management
-│   │   ├── risk_manager.py      # Position sizing, limits, circuit breakers
-│   │   └── liquidation.py       # Liquidation price calculations
-│   ├── paper/             # Paper trading simulation
-│   │   └── paper_trader.py      # Virtual account & simulated execution
-│   └── utils/             # Utilities
-│       ├── config.py            # Configuration management
-│       └── logger.py            # Structured logging
-├── config/                # Configuration files
-│   └── bb_mean_reversion.yaml   # Strategy & risk parameters
-├── .env                   # API credentials (not in repo)
-└── main.py               # Entry point
+┌─────────────────────────────────────────────────────────────┐
+│                     Main Control Loop                        │
+│                      (main.py)                               │
+└────────────┬────────────────────────────────────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    v                 v
+┌─────────┐     ┌──────────┐
+│ Config  │     │  Logger  │
+│ Manager │     │  System  │
+└─────────┘     └──────────┘
+    │                 │
+    v                 v
+┌──────────────────────────────────────────┐
+│         Paper Trading Engine              │
+│  ┌────────────────────────────────────┐  │
+│  │     Virtual Account Manager        │  │
+│  │  - Balance Tracking                │  │
+│  │  - Position Management             │  │
+│  │  - PnL Calculation                 │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
+    │           │           │           │
+    v           v           v           v
+┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
+│ Binance │ │Strategy │ │  Risk   │ │Database │
+│   API   │ │ Engine  │ │ Manager │ │ SQLite  │
+└─────────┘ └─────────┘ └─────────┘ └─────────┘
 ```
+
+**Figure 2.1**: System Architecture Diagram
+
+### 2.2 Component Specifications
+
+#### 2.2.1 Data Layer
+
+**Binance API Client** (`src/data/binance_client.py`)
+- REST API integration with HMAC-SHA256 authentication
+- Rate limiting enforcement (1200 requests/minute weight limit)
+- Exponential backoff retry mechanism
+- Timestamp synchronization for API compliance
+
+**Database Manager** (`src/data/database.py`)
+- SQLite persistent storage
+- Tables: candles, orderbook_snapshots, funding_rates, trades, positions, account_snapshots, events
+- ACID compliance for data integrity
+- Indexed queries for performance analysis
+
+#### 2.2.2 Strategy Layer
+
+**Bollinger Band Mean Reversion** (`src/strategies/bb_mean_reversion.py`)
+- Multi-factor signal generation
+- Confidence scoring system
+- Integration with market microstructure filters
+
+**Technical Indicators** (`src/strategies/indicators.py`)
+- Bollinger Bands (20-period, 2-sigma)
+- Relative Strength Index (RSI)
+- Average True Range (ATR)
+- Volume-Weighted Average Price (VWAP)
+- Custom volatility metrics
+
+#### 2.2.3 Risk Management Layer
+
+**Risk Manager** (`src/risk/risk_manager.py`)
+- Position sizing algorithms
+- Daily loss limits
+- Drawdown monitoring
+- Circuit breaker mechanisms
+
+**Liquidation Calculator** (`src/risk/liquidation.py`)
+- Isolated margin liquidation price computation
+- Distance-to-liquidation metrics
+- Safe leverage calculation
+
+#### 2.2.4 Execution Layer
+
+**Paper Trader** (`src/paper/paper_trader.py`)
+- Virtual account simulation
+- Realistic slippage modeling (5 bps)
+- Fee simulation (0.04% taker fee)
+- Funding rate application (8-hour intervals)
 
 ---
 
-## 💻 Installation
+## 3. Methodology
 
-### Prerequisites
-- Python 3.10 or higher
-- Linux/WSL (Ubuntu 22.04+ recommended)
-- Binance Futures account (for live trading)
-- Git
+### 3.1 Trading Strategy
 
-### Step 1: Clone the Repository
+#### 3.1.1 Bollinger Band Mean Reversion Theory
 
-```bash
-# Clone with correct branch
-git clone -b claude/crypto-futures-trading-bot-x2wAq https://github.com/gonzalo8a/FuturesTrader.git
-cd FuturesTrader
+The strategy is based on the statistical principle that prices tend to revert to their mean after extreme deviations. Bollinger Bands, constructed using a moving average plus/minus standard deviations, provide a dynamic envelope that adapts to volatility.
+
+**Mathematical Formulation:**
+
+Let P_t be the price at time t, and define:
+
+- Middle Band: MB_t = SMA_n(P_t)
+- Upper Band: UB_t = MB_t + k * σ_n(P_t)
+- Lower Band: LB_t = MB_t - k * σ_n(P_t)
+
+Where:
+- SMA_n is the n-period simple moving average
+- σ_n is the n-period standard deviation
+- k is the number of standard deviations (typically 2.0)
+- n is the lookback period (typically 20)
+
+**Entry Conditions:**
+
+- LONG Entry: P_t ≤ LB_t * θ, where θ = 0.998 (touch threshold)
+- SHORT Entry: P_t ≥ UB_t / θ, where θ = 0.998
+
+#### 3.1.2 Multi-Factor Signal Filtering
+
+Raw Bollinger Band signals are filtered through multiple validation layers:
+
+**Filter 1: Daily Trend Bias**
+
+Analyzes daily candle performance to align intraday positions with broader market direction.
+
+```
+daily_change = (C_daily - O_daily) / O_daily
+
+If daily_change < -2%:  # Red day
+    Reject LONG if confidence < 75%
+    Boost SHORT confidence by 15%
+
+If daily_change > +2%:  # Green day
+    Reject SHORT if confidence < 75%
+    Boost LONG confidence by 15%
 ```
 
-### Step 2: Set Up Python Environment
+**Filter 2: Order Flow Analysis**
 
-```bash
-# Install Python virtual environment support (if needed)
-sudo apt update
-sudo apt install python3.10-venv -y
+Examines recent trade aggression to gauge market pressure.
 
-# Create virtual environment
-python3 -m venv .venv
+```
+buy_volume = Σ(qty where isBuyerMaker = False)  # Aggressive buys
+sell_volume = Σ(qty where isBuyerMaker = True)   # Aggressive sells
 
-# Activate virtual environment
-source .venv/bin/activate
+buy_pressure = buy_volume / (buy_volume + sell_volume)
 
-# Upgrade pip
-pip install --upgrade pip
+Reject LONG if buy_pressure < 35%
+Reject SHORT if buy_pressure > 65%
 ```
 
-### Step 3: Install Dependencies
+**Filter 3: Liquidation Cluster Detection**
 
-```bash
-# Install all required packages
-pip install pandas numpy requests PyYAML python-dotenv
+Monitors forced liquidation events to avoid cascade participation.
+
+```
+recent_long_liquidations = COUNT(liquidations WHERE side=LONG, time > t-15min)
+recent_short_liquidations = COUNT(liquidations WHERE side=SHORT, time > t-15min)
+
+If recent_long_liquidations ≥ 5: Reject LONG
+If recent_short_liquidations ≥ 5: Reject SHORT
 ```
 
-**Note**: `pandas-ta` is NOT required as all technical indicators are implemented natively.
+#### 3.1.3 Confidence Scoring
 
-### Step 4: Configure API Credentials
+Base confidence is computed from:
 
-```bash
-# Copy environment template
-cp .env.example .env
+```
+distance_ratio = |P_t - Band| / Band
+confidence_base = min(0.5 + distance_ratio * 100, 1.0)
 
-# Edit .env with your API credentials
-nano .env
+# Adjustments:
+if volume_spike: confidence += 0.2
+if high_volatility: confidence += 0.1
+# Apply filter adjustments...
 ```
 
-Add your Binance Futures API credentials:
+### 3.2 Position Sizing
 
-```env
-BINANCE_API_KEY=your_api_key_here
-BINANCE_API_SECRET=your_api_secret_here
+Position size is dynamically calculated based on account equity and risk parameters:
+
+```
+equity = balance + margin_used + unrealized_pnl
+position_margin = equity * max_position_size_pct / 100
+notional_value = position_margin * leverage
+position_size = notional_value / entry_price
 ```
 
-**CRITICAL SECURITY:**
-- Use **testnet** for initial testing
-- Create API keys with **ONLY Futures trading permission**
-- **DISABLE withdrawals** on API keys
-- Restrict API keys by IP address if possible
-- Never share your `.env` file
+For account equity E, position size percentage ψ, and leverage L:
 
-### Step 5: Verify Installation
-
-```bash
-# Check BTC price to verify API connection
-python check_price.py
+```
+Notional Exposure = E * ψ * L
 ```
 
-You should see current BTC/USDT price and 24h statistics.
+Example: E=$100, ψ=50%, L=20x → Notional Exposure = $1,000
+
+### 3.3 Risk Parameters
+
+**Position-Level Controls:**
+- Stop-loss: 25% of position value
+- Maximum leverage: 20x (hard cap: 25x)
+- Maximum position duration: 720 minutes (12 hours)
+- Liquidation buffer: 30% distance minimum
+
+**Account-Level Controls:**
+- Daily loss limit: 10% of session starting equity
+- Maximum drawdown: 50% from peak equity
+- Maximum concurrent positions: 1
+- Maximum daily trades: 10
+
+**Circuit Breakers:**
+- Spread threshold: 0.1% (10 bps)
+- Volume threshold: 50% of 20-period average
+- Volatility threshold: 3x ATR average
+- API error threshold: 5 consecutive failures
 
 ---
 
-## ⚙️ Configuration
+## 4. Implementation
 
-The bot is configured via `config/bb_mean_reversion.yaml`. Key parameters:
+### 4.1 Module Documentation
 
-### Market Settings
-```yaml
-market:
-  symbol: "BTCUSDT"        # Trading pair
-  timeframe: "15m"          # Signal timeframe
-  tick_interval: 15000      # Update interval (ms)
-```
+#### 4.1.1 Binance API Client
 
-### Strategy Parameters
-```yaml
-strategy:
-  name: "bb_mean_reversion"
-  params:
-    bb_period: 20           # Bollinger Band period
-    bb_std: 2.0             # Standard deviations
-    bb_touch_threshold: 0.998  # Touch sensitivity (99.8% = tight)
-    rsi_period: 14
-    atr_period: 14
-```
+**File**: `src/data/binance_client.py`
 
-### Risk Management
-```yaml
-risk:
-  max_position_size_pct: 50.0  # 50% of account per trade
-  max_leverage: 20              # 20x leverage
-  stop_loss_pct: 25.0           # 25% stop-loss
-  max_daily_loss_pct: 10.0      # Stop after 10% daily loss
-  max_drawdown_pct: 50.0        # Kill switch at 50% drawdown
-  max_position_duration_minutes: 720  # 12 hours max
-```
+**Class**: `BinanceFuturesClient`
 
-### Paper Trading
-```yaml
-paper:
-  starting_balance: 50.0   # Starting capital for simulation
-  simulate_slippage: true
-  slippage_bps: 5          # 0.05% slippage
-```
+**Purpose**: Handles all REST API communications with Binance Futures exchange.
 
----
+**Key Methods**:
 
-## 🎮 Usage
-
-### Paper Trading (Recommended Start)
-
-```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Start paper trading
-python main.py paper
-
-# Or with explicit config (same thing)
-python main.py paper --config config/bb_mean_reversion.yaml
-```
-
-**What happens:**
-- Bot connects to Binance for real-time market data
-- Executes trades in local simulation (NO real orders)
-- Tracks virtual balance with realistic fees and slippage
-- Logs all trades and performance metrics
-
-**Run for at least 7 days before considering live trading!**
-
-### Live Trading (⚠️ DANGER ZONE)
-
-```bash
-python main.py live --config config/bb_mean_reversion.yaml
-```
-
-**Safety Checklist:**
-- [ ] Ran paper trading successfully for 7+ days
-- [ ] Verified stop-loss logic works correctly
-- [ ] Tested kill switch and circuit breakers
-- [ ] Using capital you can afford to lose completely
-- [ ] API keys have ONLY Futures trading permission
-- [ ] API keys have withdrawals DISABLED
-- [ ] API keys restricted by IP (optional but recommended)
-- [ ] Starting with minimum capital ($50-100)
-
-**You will be prompted to type `I UNDERSTAND THE RISKS` to proceed.**
-
-### Stopping the Bot
-
-Press `Ctrl+C` to gracefully shut down:
-- All open positions will be closed at market price
-- Final performance summary will be displayed
-- Database snapshots saved
-
----
-
-## 📚 Module Documentation
-
-### 1. `src/data/binance_client.py` - Binance API Wrapper
-
-**Purpose**: Handles all communication with Binance Futures API with rate limiting and error handling.
-
-**Key Classes:**
-- `RateLimiter`: Ensures API weight limits aren't exceeded (1200/minute)
-- `BinanceFuturesClient`: Main API client
-
-**Key Methods:**
 ```python
-get_klines(symbol, interval, limit)      # Fetch candlestick data
-get_orderbook(symbol, limit)             # Get order book depth
-get_current_price(symbol)                # Current market price
-create_order(symbol, side, type, ...)    # Place order
-get_position_info(symbol)                # Get open position details
-get_account_balance()                    # Account balance
+get_klines(symbol: str, interval: str, limit: int) -> List[List]
+    """Retrieves OHLCV candlestick data."""
+
+get_orderbook(symbol: str, limit: int) -> Dict
+    """Fetches order book depth up to specified limit."""
+
+get_current_price(symbol: str) -> float
+    """Returns current market price for symbol."""
+
+create_order(symbol: str, side: str, order_type: str,
+             quantity: float, price: Optional[float] = None) -> Dict
+    """Submits order to exchange (live mode only)."""
 ```
 
-**Features:**
-- Automatic request signing (HMAC-SHA256)
-- Rate limit enforcement with weight tracking
-- Retry logic with exponential backoff
-- Comprehensive error handling
-- Timestamp synchronization
+**Rate Limiting**:
 
-**How to Get Maximum Value:**
-- Monitor rate limit usage in logs
-- Use appropriate weight for each call
-- Batch operations when possible
-- Handle exceptions gracefully
+The `RateLimiter` class implements a sliding window algorithm:
 
----
-
-### 2. `src/data/database.py` - Data Persistence
-
-**Purpose**: SQLite database for storing all trading data.
-
-**Tables:**
-- `candles`: OHLCV data
-- `orderbook_snapshots`: Order book depth
-- `funding_rates`: Funding rate history
-- `trades`: All executed trades
-- `positions`: Open/closed positions
-- `account_snapshots`: Equity over time
-- `events`: System events (errors, warnings, kill switches)
-
-**Key Methods:**
 ```python
-insert_trade(trade_data)            # Log new trade
-update_trade(trade_id, updates)     # Update trade on close
-insert_account_snapshot(snapshot)   # Save equity snapshot
-get_trades_by_strategy(strategy)    # Query trades
+def wait_if_needed(self, weight: int = 1) -> None:
+    """Enforces rate limits by delaying requests if necessary."""
+    while len(self.requests) + weight > self.max_requests:
+        sleep_time = self.window_sec - (time.time() - self.requests[0])
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 ```
 
-**How to Get Maximum Value:**
-- Query database for performance analysis
-- Export to CSV for external analysis
-- Monitor account_snapshots for equity curve
-- Review events for system health
+#### 4.1.2 Database Manager
 
-**Database Location**: `data/futures_bot.db`
+**File**: `src/data/database.py`
 
----
+**Schema Design**:
 
-### 3. `src/strategies/bb_mean_reversion.py` - Main Strategy
+**Table: trades**
+```sql
+CREATE TABLE trades (
+    trade_id TEXT PRIMARY KEY,
+    mode TEXT,
+    symbol TEXT,
+    strategy TEXT,
+    side TEXT,
+    entry_time INTEGER,
+    entry_price REAL,
+    exit_time INTEGER,
+    exit_price REAL,
+    size REAL,
+    leverage INTEGER,
+    notional REAL,
+    pnl REAL,
+    pnl_pct REAL,
+    fees REAL,
+    exit_reason TEXT,
+    metadata TEXT
+)
+```
 
-**Purpose**: Implements Bollinger Band mean reversion with multi-factor filtering.
+**Table: account_snapshots**
+```sql
+CREATE TABLE account_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mode TEXT,
+    timestamp INTEGER,
+    equity REAL,
+    balance REAL,
+    unrealized_pnl REAL,
+    margin_used REAL,
+    margin_available REAL,
+    open_positions INTEGER,
+    daily_pnl REAL,
+    drawdown_pct REAL
+)
+```
 
-**Signal Generation Process:**
+#### 4.1.3 Strategy Implementation
 
-1. **Bollinger Band Touch Detection**
-   ```python
-   LONG: price <= bb_lower * 0.998   # 99.8% of lower band
-   SHORT: price >= bb_upper / 0.998  # 100.2% of upper band
-   ```
+**File**: `src/strategies/bb_mean_reversion.py`
 
-2. **Daily Trend Bias Filter**
-   - RED DAY (< -2%): Rejects weak LONGS, boosts SHORTS
-   - GREEN DAY (> +2%): Rejects weak SHORTS, boosts LONGS
-   - NEUTRAL: No adjustment
+**Signal Generation Algorithm**:
 
-3. **Order Flow Analysis**
-   - Calculates buy_pressure from last 100 trades
-   - Rejects LONG if < 35% (too much selling)
-   - Rejects SHORT if > 65% (too much buying)
-
-4. **Liquidation Cluster Detection**
-   - Counts recent LONG/SHORT liquidations
-   - Rejects direction with 5+ recent liquidations
-   - Boosts confidence when opposite side liquidating
-
-5. **Confidence Scoring**
-   - Base confidence from distance to band
-   - +20% for volume spike confirmation
-   - +10% for high volatility (wide bands)
-   - Adjusted by filters above
-
-**Key Methods:**
 ```python
-generate_signal(df, price, orderbook, daily_candles, trades, liquidations)
-  # Returns Signal object or None
+def generate_signal(self, df: pd.DataFrame, current_price: float,
+                   orderbook: Optional[Dict],
+                   daily_candles: Optional[pd.DataFrame],
+                   recent_trades: Optional[List],
+                   recent_liquidations: Optional[List]) -> Optional[Signal]:
+    """
+    Generates trading signals through multi-stage filtering.
 
-calculate_stop_loss(entry, side, atr)
-  # Returns stop price (25% default)
+    Process:
+    1. Compute Bollinger Bands and volatility metrics
+    2. Check for band touch conditions
+    3. Apply daily trend bias filter
+    4. Apply order flow filter
+    5. Apply liquidation cluster filter
+    6. Calculate final confidence score
 
-calculate_take_profit_levels(entry, side, atr)
-  # Returns list of TP levels (5%, 10%, 25%, 50%)
+    Returns Signal object if all filters pass, None otherwise.
+    """
 ```
 
-**How to Get Maximum Value:**
-- Monitor signal confidence scores in logs
-- Track why signals are rejected (check logs)
-- Adjust `bb_touch_threshold` for more/fewer signals
-- Tweak filter thresholds in code for your risk tolerance
+#### 4.1.4 Technical Indicators
 
----
+**File**: `src/strategies/indicators.py`
 
-### 4. `src/strategies/indicators.py` - Technical Indicators
+**Bollinger Bands Implementation**:
 
-**Purpose**: All technical indicators used by the strategy.
-
-**Implemented Indicators:**
 ```python
-bollinger_bands(prices, period=20, std=2.0)  # BB upper, middle, lower
-atr(high, low, close, period=14)             # Average True Range
-rsi(prices, period=14)                        # Relative Strength Index
-percent_b(prices, upper, lower)               # Position within BB
-bb_width(upper, lower, middle)                # Volatility measure
-sma(prices, period)                           # Simple Moving Average
-ema(prices, period)                           # Exponential Moving Average
-vwap(high, low, close, volume)                # Volume-Weighted Avg Price
+def bollinger_bands(prices: pd.Series, period: int = 20,
+                    std: float = 2.0) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """
+    Computes Bollinger Bands.
+
+    Args:
+        prices: Price series
+        period: Lookback period for moving average
+        std: Number of standard deviations
+
+    Returns:
+        (upper_band, middle_band, lower_band)
+    """
+    middle = prices.rolling(window=period).mean()
+    std_dev = prices.rolling(window=period).std()
+    upper = middle + (std_dev * std)
+    lower = middle - (std_dev * std)
+    return upper, middle, lower
 ```
 
-**Bug Fixes Applied (v1.1):**
-- ✅ Division-by-zero guards in RSI (when no losses)
-- ✅ Division-by-zero guards in %B (when bands converge)
-- ✅ Division-by-zero guards in BB Width (edge case)
+**Critical Bug Fix (v1.1)**: Division-by-zero guards added:
 
-**How to Get Maximum Value:**
-- Use ATR for dynamic stop-loss placement
-- Monitor BB Width for volatility changes
-- Check RSI for oversold/overbought confirmation
-- %B shows exact position within bands (0=lower, 1=upper)
-
----
-
-### 5. `src/risk/risk_manager.py` - Risk Management System
-
-**Purpose**: Enforces all risk limits and circuit breakers.
-
-**Risk Checks:**
-
-**1. Position Sizing**
 ```python
-# Calculates position size based on:
-- Account equity
-- max_position_size_pct (50%)
-- Leverage (20x)
-- Ensures liquidation is far from stop-loss
+def rsi(prices: pd.Series, period: int = 14) -> pd.Series:
+    """Relative Strength Index with zero-division protection."""
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+
+    # Prevent division by zero
+    rs = gain / loss.replace(0, 1e-10)
+    rsi_values = 100 - (100 / (1 + rs))
+    return rsi_values
 ```
 
-**2. Daily Limits**
-- Max daily loss: 10% of starting equity → Trading paused
-- Max consecutive losses: 3 → Warning
-- Max trades per day: 10 → Prevents overtrading
+#### 4.1.5 Risk Manager
 
-**3. Drawdown Limits**
-- Max drawdown: 50% from peak → KILL SWITCH activated
-- Tracks peak equity throughout session
+**File**: `src/risk/risk_manager.py`
 
-**4. Circuit Breakers**
+**Position Sizing Algorithm**:
+
 ```python
-check_spread_too_wide()      # Rejects if spread > 0.1%
-check_volume_too_low()       # Rejects if volume < 50% avg
-check_excessive_volatility() # Rejects if volatility > 3x avg
-check_api_errors()           # Stops after 5 consecutive errors
+def validate_trade(self, signal: Signal, equity: float,
+                   open_positions: List[Dict],
+                   current_price: float) -> Tuple[bool, str, Dict]:
+    """
+    Validates trade against all risk constraints.
+
+    Checks:
+    1. Concurrent position limit
+    2. Daily trade limit
+    3. Daily loss limit
+    4. Drawdown limit
+    5. Circuit breaker conditions
+    6. Position sizing calculations
+    7. Leverage safety validation
+
+    Returns:
+        (is_valid, rejection_reason, position_parameters)
+    """
 ```
 
-**5. Leverage Safety**
-```python
-# Ensures stop-loss is significantly closer than liquidation
-safe_leverage = calculate_safe_leverage(entry, stop, side)
-leverage = min(configured_leverage, safe_leverage)
+#### 4.1.6 Liquidation Calculator
+
+**File**: `src/risk/liquidation.py`
+
+**Liquidation Price Formula (Isolated Margin)**:
+
+For LONG positions:
+```
+Liq_Price = Entry_Price × (1 - 1/Leverage + MMR)
 ```
 
-**Key Methods:**
-```python
-validate_trade(signal, equity, positions, price)
-  # Returns (valid, reason, position_params)
-
-record_trade_result(pnl, reason)
-  # Updates daily stats
-
-update_equity(current_equity)
-  # Tracks peak and drawdown
-
-pause_trading(duration_minutes)
-  # Temporarily stops trading
+For SHORT positions:
+```
+Liq_Price = Entry_Price × (1 + 1/Leverage - MMR)
 ```
 
-**How to Get Maximum Value:**
-- Monitor circuit breaker triggers in logs
-- Adjust `max_daily_loss_pct` for risk tolerance
-- Track consecutive losses for strategy health
-- Review drawdown metrics regularly
+Where MMR (Maintenance Margin Rate) = 0.4% for BTC/USDT on Binance.
 
----
-
-### 6. `src/risk/liquidation.py` - Liquidation Calculations
-
-**Purpose**: Calculate and monitor liquidation risk.
-
-**Functions:**
-
-**1. Calculate Liquidation Price**
-```python
-calculate_liquidation_price(entry, leverage, side, margin_mode="ISOLATED")
-# Formula:
-# LONG: Entry × (1 - 1/Leverage + MMR)
-# SHORT: Entry × (1 + 1/Leverage - MMR)
-# MMR = 0.4% for BTC
-```
-
-**2. Distance to Liquidation**
-```python
-distance_to_liquidation(current_price, liq_price, side)
-# Returns percentage distance
-# Positive = safe, Negative = liquidated
-```
-
-**3. Near Liquidation Check**
-```python
-is_near_liquidation(current_price, liq_price, side, threshold=10%)
-# Returns True if within 10% of liquidation
-```
-
-**4. Calculate Safe Leverage**
-```python
-calculate_safe_leverage(entry, stop_loss, side, buffer=1.5)
-# Ensures stop is 50% closer than liquidation
-```
-
-**How to Get Maximum Value:**
-- Always check distance_to_liquidation before trading
-- Use calculate_safe_leverage to validate leverage
-- Monitor positions approaching liquidation
-- Understand relationship between leverage and liquidation
-
-**Example:**
+**Example Calculation**:
 ```
 Entry: $50,000
 Leverage: 20x
 Side: LONG
 
-Liquidation Price: $47,700 (4.6% drop)
-Stop-Loss (25%): $48,750 (2.5% drop)
+Liq_Price = 50,000 × (1 - 1/20 + 0.004)
+Liq_Price = 50,000 × (1 - 0.05 + 0.004)
+Liq_Price = 50,000 × 0.954
+Liq_Price = $47,700
 
-Distance to liquidation at entry: 4.6%
-✅ Stop-loss is far from liquidation (good!)
+Distance to liquidation = (50,000 - 47,700) / 50,000 = 4.6%
+```
+
+#### 4.1.7 Paper Trading Engine
+
+**File**: `src/paper/paper_trader.py`
+
+**VirtualAccount Class**:
+
+Critical bug fixes implemented in version 1.1:
+
+1. **Margin Subtraction on Open**:
+```python
+def open_position(self, position_id: str, ..., margin: float, ...):
+    """Opens position and locks margin from available balance."""
+    # ... position setup ...
+    self.balance -= margin          # FIX: Subtract margin
+    self.margin_used += margin
+```
+
+2. **Correct Equity Calculation**:
+```python
+def get_equity(self) -> float:
+    """Total account value including locked margin and unrealized PnL."""
+    return self.balance + self.margin_used + self.unrealized_pnl
+```
+
+**Main Trading Loop**:
+
+```python
+def run(self) -> None:
+    """
+    Main paper trading execution loop (5-second interval).
+
+    Steps per iteration:
+    1. Fetch current market price
+    2. Update unrealized PnL for open positions
+    3. Update risk manager equity tracking
+    4. Check for simulated liquidations
+    5. Manage positions (stops, targets, time exits)
+    6. Apply funding fees if applicable
+    7. Generate new signals if capacity available
+    8. Log performance metrics
+    9. Save account snapshots periodically
+    """
+```
+
+**Position Management** (Critical Fix v1.1):
+
+Session-level profit targets replace per-position attribution:
+
+```python
+# Check session-level profit target
+current_equity = self.account.get_equity()
+session_gain_pct = ((current_equity - self.session_starting_equity)
+                    / self.session_starting_equity) * 100
+
+if self.session_starting_equity < 100 and session_gain_pct >= 3.0:
+    self.logger.info(f"Account profit target hit: {session_gain_pct:.1f}%")
+    # Close ALL positions
+    for pos in self.account.get_open_positions():
+        self._close_position(pos['position_id'], current_price,
+                           f"session_target_{session_gain_pct:.1f}%")
+    return
 ```
 
 ---
 
-### 7. `src/paper/paper_trader.py` - Paper Trading Engine
+## 5. Risk Management Framework
 
-**Purpose**: Simulates live trading with virtual account.
+### 5.1 Multi-Layer Risk Control
 
-**Key Classes:**
+The system implements a defense-in-depth approach with three risk management layers:
 
-**1. VirtualAccount**
-```python
-# Tracks:
-- balance: Free balance available
-- margin_used: Capital locked in positions
-- unrealized_pnl: Open position PnL
-- equity: Total account value
+**Layer 1: Position-Level Controls**
 
-# Methods:
-open_position(...)   # Lock margin, open position
-close_position(...)  # Realize PnL, free margin
-get_equity()         # balance + margin_used + unrealized_pnl
+Individual position constraints to prevent single-trade catastrophic loss:
+
+```
+Stop-Loss Distance: 25% of position value
+Maximum Leverage: 20x (with safe leverage validation)
+Maximum Duration: 12 hours
+Liquidation Buffer: Ensure stop-loss ≥ 30% closer than liquidation
 ```
 
-**Critical Bug Fixes (v1.1):**
-- ✅ Margin now properly subtracted on open
-- ✅ Equity formula fixed to include locked margin
-- ✅ Prevents "free money" bug on close
-- ✅ Session-level profit targets (not per-position)
+**Layer 2: Account-Level Controls**
 
-**2. PaperTrader**
-```python
-# Main loop (every 5 seconds):
-1. Fetch current price
-2. Update unrealized PnL
-3. Check for liquidations (simulated)
-4. Manage positions (stops, targets, time exits)
-5. Check for new signals (if positions < max)
-6. Log performance
+Aggregate portfolio constraints:
 
-# Position Management:
-- Session-level profit targets (3% for <$100, 5% for <$500)
-- Position-level targets (5%, 10%, 25%, 50%)
-- Stop-loss checks
-- Time-based exits (12h max)
+```
+Daily Loss Limit: 10% of session starting equity → Trading paused
+Maximum Drawdown: 50% from peak equity → KILL SWITCH activation
+Consecutive Loss Limit: 3 trades → Warning issued
+Daily Trade Limit: 10 trades → Prevents overtrading
 ```
 
-**Realistic Simulation:**
-- Slippage: 0.05% (5 bps)
-- Taker fees: 0.04% per side (entry + exit)
-- Funding fees: Every 8 hours (simulated)
+**Layer 3: Market Condition Filters**
 
-**How to Get Maximum Value:**
-- Run for at least 7 days to see different market conditions
-- Monitor equity curve in database
-- Track what signals are accepted vs rejected
-- Analyze win rate and average PnL
-- Test different configurations
-- Use paper trading to validate strategy changes
+Environmental risk assessment (circuit breakers):
+
+```
+Spread Check: Reject if bid-ask spread > 0.1%
+Volume Check: Reject if volume < 50% of 20-period average
+Volatility Check: Reject if ATR > 3× average
+API Health Check: Stop after 5 consecutive API errors
+```
+
+### 5.2 Position Sizing Methodology
+
+The position sizing algorithm ensures:
+
+1. **Capital Preservation**: Never risk more than configured percentage per trade
+2. **Leverage Safety**: Validate leverage against stop-loss distance
+3. **Liquidation Avoidance**: Ensure adequate buffer to liquidation price
+
+**Calculation Workflow**:
+
+```python
+# 1. Calculate position margin
+equity = get_current_equity()
+position_margin = equity * (max_position_size_pct / 100)  # e.g., 50%
+
+# 2. Calculate safe leverage
+stop_distance = calculate_stop_distance(entry_price, stop_loss_price, side)
+max_safe_leverage = calculate_safe_leverage(
+    entry_price, stop_loss_price, side, buffer=1.5
+)
+
+# 3. Apply leverage caps
+leverage = min(max_leverage, hard_leverage_cap, max_safe_leverage)
+
+# 4. Calculate position size
+notional_value = position_margin * leverage
+position_size = notional_value / entry_price
+```
+
+**Example Calculation**:
+
+```
+Account Equity: $100
+Max Position Size: 50%
+Max Leverage: 20x
+Entry Price: $90,000
+Stop-Loss: 25% (position), approximately 1.25% (price)
+
+Position Margin: $100 × 0.50 = $50
+Stop Distance: 1.25% of price = $1,125
+Safe Leverage: 1 / (0.0125 × 1.5) ≈ 53x
+Applied Leverage: min(20, 25, 53) = 20x
+Notional Value: $50 × 20 = $1,000
+Position Size: $1,000 / $90,000 = 0.0111 BTC
+```
+
+### 5.3 Account-Based Profit Targets
+
+For small accounts (under $100), position-based profit targets (5%, 10%, 25%) are ineffective. The system implements account-level targets:
+
+**Target Thresholds**:
+
+```
+If session_starting_equity < $100:
+    Target = 3% account gain
+
+If $100 ≤ session_starting_equity < $500:
+    Target = 5% account gain
+
+If session_starting_equity ≥ $500:
+    Use position-based targets (5%, 10%, 25%, 50%)
+```
+
+**Rationale**:
+
+For a $50 account with a $25 position:
+- 5% position profit = $1.25 (2.5% account gain)
+- 3% account profit = $1.50 (target hit, close immediately)
+
+This preserves capital through consistent small wins that compound effectively.
+
+### 5.4 Kill Switch Mechanism
+
+Automatic shutdown triggers:
+
+**Trigger Conditions**:
+1. Liquidation event occurs
+2. Drawdown exceeds 50% from peak
+3. Manual intervention (Ctrl+C or .KILL_SWITCH file)
+
+**Shutdown Procedure**:
+1. Cease signal generation immediately
+2. Close all open positions at market price
+3. Record final account state to database
+4. Log comprehensive shutdown report
+5. Exit gracefully
 
 ---
 
-### 8. `src/utils/config.py` - Configuration Management
+## 6. Installation and Configuration
 
-**Purpose**: Load and validate all configuration parameters.
+### 6.1 System Requirements
 
-**Configuration Hierarchy:**
-1. YAML file: `config/bb_mean_reversion.yaml`
-2. Environment variables: `.env` file
-3. Command-line overrides
+**Software Dependencies**:
+- Python 3.10 or higher
+- pip package manager
+- Git version control
+- Linux/WSL environment (Ubuntu 22.04+ recommended)
 
-**Validation:**
-- Leverage caps: Max 25x hard cap
-- Position size: 0-100%
-- Timeframes: Valid intervals only
-- API credentials: Existence check
+**Hardware Requirements**:
+- Minimum 1GB RAM
+- Stable internet connection (< 100ms latency to Binance servers preferred)
+- Persistent storage for database (minimum 100MB)
 
-**How to Get Maximum Value:**
-- Create multiple config files for different strategies
-- Use environment variables for secrets
-- Validate config changes with paper trading first
-- Document any custom configurations
+### 6.2 Installation Procedure
 
----
-
-### 9. `src/utils/logger.py` - Structured Logging
-
-**Purpose**: Comprehensive logging for debugging and analysis.
-
-**Log Levels:**
-- DEBUG: Detailed diagnostics
-- INFO: Normal operations
-- WARNING: Concerning but not critical
-- ERROR: Failures requiring attention
-- CRITICAL: System-threatening issues
-
-**Log Outputs:**
-- Console: Colored, human-readable
-- File: JSON-structured for programmatic analysis
-
-**Special Log Functions:**
-```python
-log_trade(...)           # Trade execution details
-log_risk_event(...)      # Risk limit triggers
-log_kill_switch(...)     # Emergency shutdowns
-log_performance(...)     # Performance summaries
-```
-
-**How to Get Maximum Value:**
-- Parse JSON logs for automated analysis
-- Monitor ERROR and CRITICAL logs
-- Track trade logs for performance review
-- Use DEBUG level for troubleshooting
-
-**Log Location**: `logs/futures_trader_{date}.log`
-
----
-
-## 🎯 Strategy Explanation
-
-### Bollinger Band Mean Reversion - The Core Concept
-
-**Theory:**
-- Price tends to revert to the mean (middle Bollinger Band)
-- When price touches outer bands, it's "stretched" and likely to snap back
-- Works best in ranging/oscillating markets
-
-**Why It Works:**
-1. **Statistical Edge**: 2 standard deviations = 95% of price action
-2. **Market Psychology**: Extreme moves trigger profit-taking
-3. **Liquidity Zones**: Outer bands attract stop-loss clusters
-
-**The User's Proven Method:**
-- Manually traded on 15m BTC/USDT
-- 20x leverage, 50% position size
-- Manual exits at -20-30% (stopped out) or +5-100% (scaled profits)
-- **Most profitable shorting on red days**
-
-**Bot Improvements:**
-1. **Automated Execution**: No emotional decisions, no missed signals
-2. **Multi-Factor Filtering**: Daily bias + order flow + liquidations
-3. **Consistent Risk Management**: Always 25% stop-loss, no exceptions
-4. **Account-Level Targets**: Lock in 3-5% daily gains (life-changing for small accounts)
-
----
-
-## 🛡️ Risk Management
-
-### Position Sizing Example
-
-**Account**: $100
-**Position Size**: 50% = $50
-**Leverage**: 20x
-**Notional Value**: $50 × 20 = $1,000
-
-**At BTC = $90,000:**
-- Position Size: $1,000 / $90,000 = 0.0111 BTC
-- Margin Used: $50
-- Free Balance: $50
-- Stop-Loss (25%): $12.50 loss
-- Liquidation (95%): $47.50 loss (shouldn't happen if stop works)
-
-**Key Insight**: You're risking $12.50 to potentially make $15-50+ per trade.
-
-### The 3% Rule for Small Accounts
-
-**Problem**: Position-based targets (5%, 10%) don't make sense for $50-100 accounts.
-**Solution**: Account-level profit targets.
-
-**Example:**
-- Start with $50
-- Trade makes $1.50 (3% of account)
-- **Close position immediately**
-- Preserve capital, consistent small wins compound
-
-**Math:**
-- 3% daily gain = 3,000% annual return (unrealistic to sustain)
-- But even 1% daily = 3,678% annual
-- **Compounding is king** for small accounts
-
----
-
-## 🚀 Advanced Features
-
-### Daily Trend Bias Filter
-
-**How It Works:**
-```python
-# Fetch daily candle
-daily_change = (close - open) / open
-
-if daily_change < -0.02:  # Red day (-2%+)
-    # Market bearish, favor SHORTS
-    if signal == LONG and confidence < 75%:
-        reject_signal()
-    if signal == SHORT:
-        confidence += 15%
-
-elif daily_change > 0.02:  # Green day (+2%+)
-    # Market bullish, favor LONGS
-    # Mirror logic
-```
-
-**Why It Matters:**
-- The user made most profits shorting on red days
-- Market momentum persists intraday
-- Going with the trend increases win rate
-
-**Optimization:**
-- Adjust thresholds (-2%, +2%) based on backtest results
-- Consider 4h or 6h timeframe instead of daily
-- Add moving average filter for longer-term trend
-
-### Order Flow Analysis
-
-**Calculation:**
-```python
-# Last 100 trades
-buy_volume = sum(trade['qty'] where trade['isBuyerMaker'] == False)
-sell_volume = sum(trade['qty'] where trade['isBuyerMaker'] == True)
-
-buy_pressure = buy_volume / (buy_volume + sell_volume)
-
-# Thresholds:
-if buy_pressure < 35%:  reject LONG  # Too much selling
-if buy_pressure > 65%:  reject SHORT # Too much buying
-```
-
-**Why It Matters:**
-- Real-time measure of market sentiment
-- Aggressive buying/selling indicates conviction
-- Aligns with order flow trading principles
-
-**Optimization:**
-- Adjust sample size (100 trades)
-- Adjust thresholds (35%, 65%)
-- Weight recent trades more heavily
-
-### Liquidation Cluster Detection
-
-**How It Works:**
-```python
-# Fetch recent forced liquidations
-recent_longs_liquidated = count(liquidations where side=LONG, time < 15min ago)
-recent_shorts_liquidated = count(liquidations where side=SHORT, time < 15min ago)
-
-if recent_longs_liquidated >= 5:
-    # LONG cascade in progress, avoid LONG
-    reject_long()
-    boost_short_confidence()
-
-if recent_shorts_liquidated >= 5:
-    # SHORT squeeze in progress, avoid SHORT
-    reject_short()
-    boost_long_confidence()
-```
-
-**Why It Matters:**
-- Liquidations cascade (trigger more liquidations)
-- Opposite side gets filled at favorable prices
-- Indicates extreme leverage exhaustion
-
-**Optimization:**
-- Adjust threshold (5 liquidations)
-- Adjust time window (15 minutes)
-- Consider notional value of liquidations, not just count
-
----
-
-## 📊 Optimization Tips
-
-### Getting the Most Out of FuturesTrader
-
-**1. Configuration Tuning**
-```yaml
-# More conservative (recommended start):
-risk:
-  max_position_size_pct: 30.0  # Lower position size
-  max_leverage: 10             # Lower leverage
-  stop_loss_pct: 15.0          # Tighter stops
-
-# More aggressive (after validation):
-risk:
-  max_position_size_pct: 75.0
-  max_leverage: 20
-  stop_loss_pct: 30.0
-```
-
-**2. Strategy Adjustments**
-```yaml
-strategy:
-  params:
-    bb_touch_threshold: 0.995  # More signals (looser)
-    bb_touch_threshold: 0.999  # Fewer signals (tighter)
-```
-
-**3. Timeframe Experimentation**
-```yaml
-market:
-  timeframe: "5m"   # More frequent signals, noisier
-  timeframe: "15m"  # Balanced (recommended)
-  timeframe: "30m"  # Fewer signals, higher quality
-```
-
-**4. Filter Tuning**
-
-Edit `src/strategies/bb_mean_reversion.py`:
-
-```python
-# Daily trend bias threshold
-if daily_change < -0.03:  # Stricter (-3% instead of -2%)
-
-# Order flow thresholds
-if buy_pressure < 30%:  # More conservative (30% instead of 35%)
-
-# Liquidation threshold
-if recent_longs_liquidated >= 3:  # More sensitive (3 instead of 5)
-```
-
-**5. Performance Analysis**
+**Step 1: Repository Cloning**
 
 ```bash
-# Query database for insights
-sqlite3 data/futures_bot.db
+git clone -b claude/crypto-futures-trading-bot-x2wAq \
+    https://github.com/gonzalo8a/FuturesTrader.git
+cd FuturesTrader
+```
 
-# Most profitable times
+**Step 2: Python Environment Setup**
+
+```bash
+# Install virtual environment support
+sudo apt update
+sudo apt install python3.10-venv -y
+
+# Create isolated environment
+python3 -m venv .venv
+
+# Activate environment
+source .venv/bin/activate
+
+# Upgrade package manager
+pip install --upgrade pip
+```
+
+**Step 3: Dependency Installation**
+
+```bash
+# Install required packages
+pip install pandas numpy requests PyYAML python-dotenv
+```
+
+Note: pandas-ta is not required as all technical indicators are implemented natively.
+
+**Step 4: API Credentials Configuration**
+
+```bash
+# Create environment file from template
+cp .env.example .env
+
+# Edit credentials (use secure editor)
+nano .env
+```
+
+Required variables:
+```
+BINANCE_API_KEY=your_api_key_here
+BINANCE_API_SECRET=your_api_secret_here
+```
+
+**Security Best Practices**:
+- Create API keys with ONLY Futures trading permission
+- Disable withdrawal capability on API keys
+- Restrict keys by IP address when possible
+- Use testnet for initial validation
+- Set file permissions: `chmod 600 .env`
+
+**Step 5: Installation Verification**
+
+```bash
+# Test API connectivity
+python check_price.py
+```
+
+Expected output:
+```
+Current BTC/USDT Price: $X,XXX.XX
+24h Volume: $XXX,XXX,XXX
+```
+
+### 6.3 Configuration Parameters
+
+Primary configuration file: `config/bb_mean_reversion.yaml`
+
+**Market Configuration**:
+```yaml
+market:
+  symbol: "BTCUSDT"
+  timeframe: "15m"
+  tick_interval: 15000
+```
+
+**Strategy Parameters**:
+```yaml
+strategy:
+  name: "bb_mean_reversion"
+  params:
+    bb_period: 20
+    bb_std: 2.0
+    bb_touch_threshold: 0.998
+    rsi_period: 14
+    atr_period: 14
+```
+
+**Risk Management**:
+```yaml
+risk:
+  max_position_size_pct: 50.0
+  max_leverage: 20
+  hard_leverage_cap: 25
+  stop_loss_pct: 25.0
+  max_daily_loss_pct: 10.0
+  max_drawdown_pct: 50.0
+  max_position_duration_minutes: 720
+  max_concurrent_positions: 1
+```
+
+**Paper Trading**:
+```yaml
+paper:
+  starting_balance: 50.0
+  simulate_slippage: true
+  slippage_bps: 5
+  simulate_funding: true
+  funding_interval_hours: 8
+```
+
+### 6.4 Execution Modes
+
+**Paper Trading Mode** (Recommended Initial):
+
+```bash
+source .venv/bin/activate
+python main.py paper
+```
+
+Characteristics:
+- Real-time market data from Binance API
+- Local simulation of order execution
+- Realistic slippage (0.05%) and fees (0.04% taker)
+- No actual orders submitted to exchange
+- Full audit trail maintained
+
+Recommended duration: Minimum 7 consecutive days
+
+**Live Trading Mode** (Production):
+
+```bash
+python main.py live --config config/bb_mean_reversion.yaml
+```
+
+Pre-deployment checklist:
+- Paper trading completed for 7+ days
+- Stop-loss logic verified through simulation
+- Kill switch mechanism tested
+- API keys configured with correct permissions
+- Starting capital is completely expendable
+- Thorough understanding of all risks
+
+**Graceful Shutdown**:
+
+Press Ctrl+C to initiate shutdown sequence:
+1. Stop signal generation
+2. Close all positions at market
+3. Save final account snapshot
+4. Display performance summary
+
+---
+
+## 7. Experimental Results
+
+### 7.1 Strategy Theoretical Analysis
+
+**Hypothesis**: Bollinger Band mean reversion exploits temporary price deviations in oscillating markets.
+
+**Statistical Foundation**:
+
+Under normal distribution assumptions, 95% of price action should occur within 2 standard deviations of the mean. Prices touching the outer bands represent statistical extremes with high probability of reversion.
+
+**Expected Characteristics**:
+- Win rate: 55-65% (slightly better than random)
+- Average win: Moderate (3-10%)
+- Average loss: Controlled by stop-loss (maximum 25% position = 1.25% account at 20x)
+- Profit factor: > 1.5 (total wins / total losses)
+
+### 7.2 Performance Metrics
+
+**Small Account Performance** ($50-100):
+
+Theoretical targets:
+- Daily profit target: 3% of account equity
+- Expected trade frequency: 1-2 trades per day
+- Profitable weeks: 15-20% weekly gain
+- Break-even weeks: -5% to 0%
+
+Compounding analysis:
+```
+Starting Capital: $50
+Daily Target: 3% = $1.50
+Week 1: $50 × 1.03^5 = $57.96 (+15.9%)
+Week 2: $57.96 × 1.03^5 = $67.18 (+16.0%)
+Week 3: $67.18 × 1.03^5 = $77.88 (+15.9%)
+Week 4: $77.88 × 1.03^5 = $90.29 (+15.9%)
+
+4-Week Result: +80.6% (if 3% daily sustained)
+```
+
+Note: Sustained 3% daily returns are extremely difficult to maintain. Realistic expectations should account for:
+- Zero-signal days
+- Losing streaks triggering daily loss limits
+- Market condition changes
+- Drawdown periods
+
+**Reality Check**:
+
+The system enforces realistic constraints:
+- Most days: 0-2 trades (not 10-20)
+- Expected outcome: Small consistent gains with occasional drawdowns
+- Not a "get rich quick" system
+- Edge is small but systematic
+
+### 7.3 Historical Context
+
+Based on manual trading results that informed this system:
+- Strategy profitable over multiple months
+- Highest profitability: SHORT positions on red days (down > 2%)
+- Stop-losses prevented catastrophic losses multiple times
+- Profit scaling: Small wins ($1-2), larger wins ($5-10) on trend days
+- Key insight: Consistency and capital preservation over home runs
+
+### 7.4 Performance Monitoring
+
+**Database Queries for Analysis**:
+
+Most profitable trading hours:
+```sql
 SELECT strftime('%H', exit_time/1000, 'unixepoch') as hour,
        AVG(pnl) as avg_pnl,
        COUNT(*) as trades
@@ -866,212 +933,523 @@ FROM trades
 WHERE exit_time IS NOT NULL
 GROUP BY hour
 ORDER BY avg_pnl DESC;
+```
 
-# Win rate by side
+Win rate by direction:
+```sql
 SELECT side,
        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as win_rate,
-       AVG(pnl) as avg_pnl
+       AVG(pnl) as avg_pnl,
+       COUNT(*) as total_trades
 FROM trades
 WHERE exit_time IS NOT NULL
 GROUP BY side;
 ```
 
-**6. Risk Optimization**
-
+Drawdown analysis:
 ```sql
-# Track your actual max drawdown
-SELECT MIN(equity) as lowest,
-       MAX(equity) as peak,
-       (MAX(equity) - MIN(equity)) * 100.0 / MAX(equity) as max_dd
+SELECT MIN(equity) as lowest_equity,
+       MAX(equity) as peak_equity,
+       (MAX(equity) - MIN(equity)) * 100.0 / MAX(equity) as max_drawdown_pct
 FROM account_snapshots;
-
-# Adjust max_drawdown_pct accordingly
 ```
 
 ---
 
-## 🔧 Troubleshooting
+## 8. Discussion
 
-### Common Issues
+### 8.1 Advantages
 
-**1. "No signals for hours"**
-- **Normal**: BB touches are rare (quality over quantity)
-- **Check**: Are filters too strict? Review logs for rejection reasons
-- **Solution**: Loosen `bb_touch_threshold` or adjust filters
+**Automation Benefits**:
+- Eliminates emotional trading decisions
+- Never misses signals due to inattention
+- Consistent application of risk management rules
+- 24/7 operation capability
+- Perfect audit trail for performance analysis
 
-**2. "API key error"**
-- **Check**: API permissions include Futures trading
-- **Check**: API key not expired
-- **Check**: IP restriction (if enabled)
-- **Solution**: Regenerate API keys with correct permissions
+**Multi-Factor Filtering**:
+- Daily trend bias improves directional accuracy
+- Order flow provides real-time market sentiment
+- Liquidation detection avoids cascade participation
+- Confidence scoring weights signal quality
 
-**3. "Rate limit exceeded"**
-- **Cause**: Too many API calls
-- **Check**: Are you running multiple instances?
-- **Solution**: Increase `tick_interval` in config
+**Risk Management**:
+- Multiple layers of protection
+- Account-based targets for small capital
+- Automatic shutdown on catastrophic scenarios
+- Circuit breakers for market anomalies
 
-**4. "Positions not closing at profit target"**
-- **Check**: Account size (<$100 for 3% target)
-- **Check**: Session starting equity set correctly
-- **Fixed in v1.1**: Position equity attribution bug fixed
+### 8.2 Limitations
 
-**5. "Database locked"**
-- **Cause**: Multiple bot instances accessing same database
-- **Solution**: Stop other instances or use separate databases
+**Market Structure Dependencies**:
+- Strategy performs best in oscillating (ranging) markets
+- Strong trending markets may trigger consecutive stop-losses
+- Flash crashes can breach stop-losses before execution
+- Exchange outages create unmanaged position risk
 
-**6. "Slippage higher than expected"**
-- **Cause**: Low liquidity or market orders during volatility
-- **Solution**: Use limit orders (requires code modification) or accept slippage
+**Technical Limitations**:
+- Backtesting not implemented (uses forward testing only)
+- Single-symbol focus (BTC/USDT only)
+- No portfolio diversification
+- Dependent on exchange API reliability
 
-**7. "Weird PnL jumps in paper trading"**
-- **Fixed in v1.1**: Critical balance tracking bugs fixed
-- **Action**: Pull latest code with `git pull`
+**Economic Limitations**:
+- Transaction costs (fees + slippage) erode profits
+- Funding rates can be negative for held positions
+- Leverage amplifies both gains and losses
+- Small accounts face minimum order size constraints
 
----
+### 8.3 Critical Bugs Fixed (Version 1.1)
 
-## 🐛 Bug Fixes & Changelog
+**Bug 1: Inverted Bollinger Band Touch Logic**
 
-### Version 1.1 (Latest) - Critical Bug Fixes
+Impact: Severe - Signals generated at incorrect price levels
 
-**Date**: January 20, 2026
-
-**Critical Fixes:**
-
-1. **Bollinger Band Touch Logic Inverted** 🐛→✅
-   - **Bug**: Formula was backwards, triggering signals at wrong prices
-   - **Impact**: Signals fired when price was NEAR bands, not touching them
-   - **Fix**: Corrected formula:
-     - LONG: `price <= bb_lower * 0.998` (was `price <= bb_lower * 1.002`)
-     - SHORT: `price >= bb_upper / 0.998` (was `price >= bb_upper * 0.998`)
-   - **File**: `src/strategies/bb_mean_reversion.py:156-177`
-
-2. **Paper Trading PnL Bugs** 🐛→✅
-   - **Bug #1**: Margin not subtracted on position open, creating "free money"
-   - **Bug #2**: Equity formula missing locked margin
-   - **Impact**: Massive equity jumps unrelated to actual PnL ($1.22 trade showing as +$27 gain!)
-   - **Fix**:
-     - Subtract margin from balance on open: `balance -= margin`
-     - Fix equity formula: `balance + margin_used + unrealized_pnl`
-   - **File**: `src/paper/paper_trader.py:76, 39-40, 133`
-
-3. **Division by Zero Guards** 🐛→✅
-   - **Bug**: RSI, %B, BB Width could divide by zero
-   - **Impact**: NaN values, invalid indicators, strategy failures
-   - **Fix**: Replace zero denominators with tiny epsilon (1e-10)
-   - **File**: `src/strategies/indicators.py:74, 115, 125`
-
-4. **Position Equity Attribution** 🐛→✅
-   - **Bug**: Global equity gain attributed to individual positions
-   - **Impact**: Positions closed prematurely when OTHER positions performed well
-   - **Fix**: Track session_starting_equity, close ALL positions at account target
-   - **File**: `src/paper/paper_trader.py:394-410`
-
-5. **Margin Available Calculation** 🐛→✅
-   - **Bug**: Calculated as `equity - margin_used` (includes unrealized PnL)
-   - **Impact**: Incorrect available balance for new trades
-   - **Fix**: Use `balance` directly (free balance)
-   - **File**: `src/paper/paper_trader.py:660`
-
-**Severity**: All fixes are **CRITICAL** for accurate trading and PnL tracking.
-
-**Action Required**: Pull latest code before running bot:
-```bash
-cd /home/user/FuturesTrader
-git pull origin claude/crypto-futures-trading-bot-x2wAq
+Original code:
+```python
+if current_price <= latest['bb_lower'] * (2 - 0.998):  # Wrong
+    signal_side = "LONG"
 ```
 
----
+Fixed code:
+```python
+if current_price <= latest['bb_lower'] * 0.998:  # Correct
+    signal_side = "LONG"
+```
 
-### Version 1.0 (Initial Release)
+**Bug 2: Paper Trading PnL Calculation**
 
-**Date**: January 18, 2026
+Impact: Critical - Artificial equity inflation
 
-**Features:**
-- Initial implementation of Bollinger Band mean reversion strategy
-- Paper trading mode with virtual account
-- Multi-factor signal filtering (daily bias, order flow, liquidations)
-- Comprehensive risk management
-- SQLite database for trade history
-- Structured logging
+Issues:
+- Margin not subtracted on position open
+- Equity formula missing locked margin
+- Created "free money" on every trade close
 
----
+Fix:
+- Subtract margin on open: `self.balance -= margin`
+- Correct equity: `balance + margin_used + unrealized_pnl`
 
-## 📈 Performance Expectations
+**Bug 3: Division by Zero in Indicators**
 
-### Realistic Goals
+Impact: High - Invalid indicator values causing strategy failures
 
-**Small Account ($50-100):**
-- Target: 3% daily gains
-- Expected: 1-2 trades per day (sometimes 0)
-- Good week: 15-20% gain
-- Bad week: -5% to 0%
-- **Compounding**: Turn $50 → $100 in 3-4 weeks at 3% daily (if sustained)
+Fixed in: RSI, Percent B, Bollinger Band Width
 
-**Medium Account ($100-500):**
-- Target: 5% daily gains
-- Expected: 2-3 trades per day
-- Good week: 25-35% gain
-- Bad week: -5% to 0%
+Solution: Replace zero denominators with epsilon (1e-10)
 
-**Large Account ($500+):**
-- Position-based targets (5%, 10%, 25%, 50%)
-- Expected: 3-5 trades per day
-- Focus on consistency over % gains
+**Bug 4: Position Equity Attribution**
 
-### Reality Check ✅
+Impact: High - Premature position exits
 
-- **This is NOT a "get rich quick" scheme**
-- Most days you'll have 0-2 trades (not 20)
-- Some weeks will be breakeven or small losses
-- Daily loss limits will stop you before catastrophic losses
-- The edge is small but consistent
+Issue: Global equity gain attributed to individual positions
 
-**Historical Performance (User's Manual Trading):**
-- Profitable over months of trading
-- Made most gains shorting on red days
-- Stop-losses saved capital multiple times
-- Scaled profits: $1-2 on small gains, $5-10 on larger moves
+Fix: Session-level equity tracking, close all positions at account target
 
-**Bot Advantage:**
-- Never misses signals
-- No emotional decisions
-- Consistent risk management
-- Runs 24/7 (but respects daily limits)
+**Bug 5: Margin Available Calculation**
 
----
+Impact: Medium - Incorrect available balance display
 
-## 🙏 Acknowledgments
+Fix: Changed from `equity - margin_used` to `balance`
 
-- Built for automated cryptocurrency futures trading on Binance
-- Strategy based on proven manual trading methods
-- Designed for small account compounding and risk management
-- Inspired by real-world profitability over theoretical perfection
+### 8.4 Future Enhancements
 
----
+Potential improvements for future versions:
 
-## 📜 License
+**Backtesting Framework**:
+- Historical data download capability
+- Event-driven backtesting engine
+- Performance metrics calculation
+- Parameter optimization routines
 
-MIT License - See LICENSE file for details.
+**Multi-Symbol Support**:
+- Portfolio allocation across multiple pairs
+- Correlation-based position sizing
+- Diversification benefits
 
-**Disclaimer**: This software is provided AS-IS with NO WARRANTY. The developers are not responsible for any financial losses incurred by using this bot.
+**Advanced Features**:
+- Machine learning for signal filtering
+- Adaptive parameter optimization
+- Sentiment analysis integration
+- On-chain metrics incorporation
+
+**Risk Improvements**:
+- Dynamic leverage adjustment
+- Volatility-based position sizing
+- Kelly criterion implementation
+- Risk parity allocation
 
 ---
 
-## 📞 Support
+## 9. Conclusion
 
-For issues, questions, or discussion:
-- GitHub Issues: [FuturesTrader Issues](https://github.com/gonzalo8a/FuturesTrader/issues)
-- Read logs carefully: `logs/futures_trader_*.log`
-- Check database: `sqlite3 data/futures_bot.db`
+FuturesTrader represents a comprehensive implementation of an automated Bollinger Band mean reversion strategy for cryptocurrency futures markets. The system incorporates multi-factor signal filtering, robust risk management, and realistic simulation capabilities.
 
-**Remember**:
-- Always start with paper trading
-- Test for at least 7 days
-- Only trade with money you can afford to lose
-- Leverage amplifies both gains AND losses
+**Key Contributions**:
+
+1. **Practical Implementation**: Translation of manual trading methodology into automated system
+2. **Multi-Layer Risk Control**: Defense-in-depth approach protecting capital
+3. **Market Microstructure Integration**: Order flow and liquidation awareness
+4. **Small Account Optimization**: Account-based targets for capital efficiency
+5. **Comprehensive Documentation**: Full system specification and usage guide
+
+**Critical Considerations**:
+
+Users must understand that:
+- Leverage trading carries extreme risk of total capital loss
+- Past performance provides no guarantee of future results
+- Extensive paper trading validation is mandatory before live deployment
+- Continuous monitoring and risk management are essential
+- Market conditions change and strategies may cease to be effective
+
+The system provides tools for systematic trading but cannot eliminate the fundamental risks of leveraged futures trading. Users bear complete responsibility for understanding these risks and managing their capital accordingly.
+
+**Recommended Usage Protocol**:
+
+1. Thoroughly study all documentation
+2. Run paper trading for minimum 7 days
+3. Analyze performance metrics comprehensively
+4. Adjust configuration based on observed results
+5. Start live trading with minimal capital
+6. Increase allocation only after consistent profitability
+7. Maintain detailed records for continuous improvement
 
 ---
 
-**Happy Trading! 🚀📈**
+## 10. Appendices
 
-*Last Updated: January 20, 2026 | Version 1.1*
+### Appendix A: File Structure
+
+```
+FuturesTrader/
+├── src/
+│   ├── data/
+│   │   ├── binance_client.py      # API communication
+│   │   └── database.py             # SQLite operations
+│   ├── strategies/
+│   │   ├── bb_mean_reversion.py   # Main strategy
+│   │   └── indicators.py           # Technical indicators
+│   ├── risk/
+│   │   ├── risk_manager.py         # Risk controls
+│   │   └── liquidation.py          # Liquidation calculations
+│   ├── paper/
+│   │   └── paper_trader.py         # Paper trading engine
+│   └── utils/
+│       ├── config.py               # Configuration management
+│       └── logger.py               # Logging system
+├── config/
+│   └── bb_mean_reversion.yaml      # Strategy parameters
+├── tests/
+│   └── test_virtual_account.py     # Unit tests
+├── data/
+│   └── futures_bot.db              # SQLite database (generated)
+├── logs/
+│   └── *.log                       # Log files (generated)
+├── .env                            # API credentials (user-created)
+├── .env.example                    # Credentials template
+├── main.py                         # Entry point
+├── check_price.py                  # API verification utility
+├── requirements.txt                # Python dependencies
+├── verify_fix.py                   # Bug fix verification
+└── README.md                       # This document
+```
+
+### Appendix B: Configuration Reference
+
+Complete list of configurable parameters with descriptions and valid ranges:
+
+**Market Parameters**:
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| symbol | str | "BTCUSDT" | Valid Binance symbol | Trading pair |
+| timeframe | str | "15m" | 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d | Candle interval |
+| tick_interval | int | 15000 | > 0 (ms) | Main loop frequency |
+
+**Strategy Parameters**:
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| bb_period | int | 20 | 10-100 | Bollinger Band lookback |
+| bb_std | float | 2.0 | 1.0-3.0 | Standard deviations |
+| bb_touch_threshold | float | 0.998 | 0.95-1.0 | Touch sensitivity |
+| rsi_period | int | 14 | 7-28 | RSI calculation period |
+| atr_period | int | 14 | 7-28 | ATR calculation period |
+
+**Risk Parameters**:
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| max_position_size_pct | float | 50.0 | 1.0-100.0 | Position as % of equity |
+| max_leverage | int | 20 | 1-125 | Maximum leverage allowed |
+| hard_leverage_cap | int | 25 | 1-125 | Absolute leverage limit |
+| stop_loss_pct | float | 25.0 | 5.0-50.0 | Stop as % of position |
+| max_daily_loss_pct | float | 10.0 | 1.0-50.0 | Daily loss limit |
+| max_drawdown_pct | float | 50.0 | 10.0-90.0 | Drawdown kill switch |
+| max_position_duration_minutes | int | 720 | 30-1440 | Maximum hold time |
+
+**Paper Trading Parameters**:
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| starting_balance | float | 50.0 | > 0 | Initial virtual capital |
+| simulate_slippage | bool | true | true/false | Enable slippage |
+| slippage_bps | int | 5 | 0-50 | Slippage in basis points |
+| simulate_funding | bool | true | true/false | Enable funding fees |
+| funding_interval_hours | int | 8 | 1-24 | Funding frequency |
+
+### Appendix C: Database Schema
+
+Complete schema definitions for all tables:
+
+**candles**:
+```sql
+CREATE TABLE candles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    open REAL NOT NULL,
+    high REAL NOT NULL,
+    low REAL NOT NULL,
+    close REAL NOT NULL,
+    volume REAL NOT NULL,
+    close_time INTEGER,
+    quote_volume REAL,
+    trades INTEGER,
+    taker_buy_base REAL,
+    taker_buy_quote REAL,
+    UNIQUE(symbol, interval, timestamp)
+);
+```
+
+**trades**:
+```sql
+CREATE TABLE trades (
+    trade_id TEXT PRIMARY KEY,
+    mode TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    side TEXT NOT NULL,
+    entry_time INTEGER NOT NULL,
+    entry_price REAL NOT NULL,
+    exit_time INTEGER,
+    exit_price REAL,
+    size REAL NOT NULL,
+    leverage INTEGER NOT NULL,
+    notional REAL NOT NULL,
+    pnl REAL,
+    pnl_pct REAL,
+    fees REAL NOT NULL,
+    exit_reason TEXT,
+    metadata TEXT
+);
+```
+
+**account_snapshots**:
+```sql
+CREATE TABLE account_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mode TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    equity REAL NOT NULL,
+    balance REAL NOT NULL,
+    unrealized_pnl REAL,
+    margin_used REAL,
+    margin_available REAL,
+    open_positions INTEGER,
+    daily_pnl REAL,
+    drawdown_pct REAL
+);
+```
+
+### Appendix D: Common Issues and Solutions
+
+**Issue 1: No Signals Generated**
+
+Symptom: Bot runs for hours without opening positions
+
+Cause: Bollinger Band touches are rare events; filters may reject valid signals
+
+Solutions:
+- Review logs for filter rejection reasons
+- Loosen `bb_touch_threshold` (try 0.995 instead of 0.998)
+- Adjust filter thresholds in strategy code
+- Consider different timeframe (5m for more signals)
+- Verify market is oscillating (not strongly trending)
+
+**Issue 2: API Authentication Errors**
+
+Symptom: "Invalid API key" or "Signature verification failed"
+
+Cause: Incorrect API credentials or insufficient permissions
+
+Solutions:
+- Verify API key and secret in `.env` file
+- Ensure keys have Futures trading permission enabled
+- Check keys are not expired
+- Confirm IP restrictions (if enabled) include your IP
+- Regenerate keys if necessary
+
+**Issue 3: Rate Limit Exceeded**
+
+Symptom: "HTTP 429: Too many requests"
+
+Cause: Excessive API calls exceeding exchange limits
+
+Solutions:
+- Verify only one bot instance is running
+- Increase `tick_interval` in configuration
+- Check for multiple processes accessing same keys
+- Wait 1 minute for rate limit reset
+
+**Issue 4: Database Locked**
+
+Symptom: "Database is locked" errors
+
+Cause: Multiple processes accessing same SQLite database
+
+Solutions:
+- Stop other bot instances
+- Check for zombie processes: `ps aux | grep python`
+- Use separate databases for multiple instances
+- Ensure proper database closure on shutdown
+
+**Issue 5: Unexpected PnL Values**
+
+Symptom: Equity jumps don't match trade PnL
+
+Cause: Bug in version 1.0 (fixed in version 1.1)
+
+Solution:
+- Update to version 1.1: `git pull origin claude/crypto-futures-trading-bot-x2wAq`
+- Reset database: `rm data/futures_bot.db`
+- Restart bot with corrected code
+
+### Appendix E: Optimization Examples
+
+**Conservative Configuration** (Lower Risk):
+
+```yaml
+risk:
+  max_position_size_pct: 30.0  # 30% instead of 50%
+  max_leverage: 10             # 10x instead of 20x
+  stop_loss_pct: 15.0          # Tighter stops
+  max_daily_loss_pct: 5.0      # More restrictive
+```
+
+**Aggressive Configuration** (Higher Risk):
+
+```yaml
+risk:
+  max_position_size_pct: 75.0  # 75% of account
+  max_leverage: 20             # Full 20x
+  stop_loss_pct: 30.0          # Wider stops
+  max_daily_loss_pct: 15.0     # More tolerance
+```
+
+**Signal Tuning Examples**:
+
+More signals (looser):
+```yaml
+strategy:
+  params:
+    bb_touch_threshold: 0.995  # 99.5% (was 99.8%)
+```
+
+Fewer signals (tighter):
+```yaml
+strategy:
+  params:
+    bb_touch_threshold: 0.999  # 99.9% (was 99.8%)
+```
+
+**Filter Threshold Adjustments** (in code):
+
+```python
+# File: src/strategies/bb_mean_reversion.py
+
+# More conservative daily bias (require stronger trend):
+if daily_change < -0.03:  # -3% instead of -2%
+
+# More conservative order flow:
+if buy_pressure < 0.30:  # 30% instead of 35%
+
+# More sensitive liquidation detection:
+if recent_longs_liquidated >= 3:  # 3 instead of 5
+```
+
+### Appendix F: Version History
+
+**Version 1.1** (January 20, 2026)
+
+Critical bug fixes:
+- Fixed inverted Bollinger Band touch logic
+- Fixed paper trading PnL calculation (margin handling)
+- Added division-by-zero guards in indicators
+- Fixed position equity attribution
+- Fixed margin_available calculation
+- Comprehensive documentation added
+
+**Version 1.0** (January 18, 2026)
+
+Initial release:
+- Bollinger Band mean reversion implementation
+- Multi-factor signal filtering
+- Paper trading simulation
+- Risk management framework
+- SQLite database persistence
+- Structured logging system
+
+### Appendix G: License and Disclaimer
+
+**License**: MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+**Disclaimer**:
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+**TRADING RISK DISCLOSURE**:
+
+Trading cryptocurrency futures with leverage involves substantial risk of loss. This software is a tool that executes automated trading strategies, but does not guarantee profits. Past performance is not indicative of future results. Users must understand and accept:
+
+1. Total capital loss is possible and may occur rapidly
+2. Leverage amplifies both gains and losses
+3. Market conditions change and strategies may cease to function
+4. Exchange outages, API failures, and black swan events can occur
+5. The developers assume no liability for trading results
+6. Users are solely responsible for their trading decisions and risk management
+
+Only trade with capital you can afford to lose completely. Consult financial professionals before trading leveraged derivatives.
+
+### Appendix H: Support and Resources
+
+**GitHub Repository**:
+https://github.com/gonzalo8a/FuturesTrader
+
+**Issue Tracking**:
+https://github.com/gonzalo8a/FuturesTrader/issues
+
+**Binance Futures API Documentation**:
+https://binance-docs.github.io/apidocs/futures/en/
+
+**Technical Support**:
+- Review log files in `logs/` directory
+- Query database for analysis: `sqlite3 data/futures_bot.db`
+- Check system status with: `git log -1 --oneline`
+
+**Recommended Workflow**:
+1. Study documentation thoroughly
+2. Run paper trading minimum 7 days
+3. Analyze results using database queries
+4. Adjust configuration based on findings
+5. Start live with minimal capital
+6. Maintain detailed trading journal
+7. Continuously monitor and improve
+
+---
+
+**Document Version**: 1.1
+**Last Updated**: January 20, 2026
+**Authors**: FuturesTrader Development Team
+**Classification**: Open Source Trading System Documentation
