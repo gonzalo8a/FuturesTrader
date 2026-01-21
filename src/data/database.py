@@ -158,6 +158,7 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mode TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
+                    current_price REAL,
                     equity REAL NOT NULL,
                     balance REAL NOT NULL,
                     unrealized_pnl REAL NOT NULL,
@@ -398,12 +399,13 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO account_snapshots
-                (mode, timestamp, equity, balance, unrealized_pnl, margin_used, margin_available,
+                (mode, timestamp, current_price, equity, balance, unrealized_pnl, margin_used, margin_available,
                  open_positions, daily_pnl, drawdown_pct)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 snapshot['mode'],
                 snapshot['timestamp'],
+                snapshot.get('current_price'),
                 snapshot['equity'],
                 snapshot['balance'],
                 snapshot['unrealized_pnl'],

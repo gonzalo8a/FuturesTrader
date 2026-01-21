@@ -216,11 +216,11 @@ class PaperTrader:
 
                 # 8. Log performance every 10 iterations
                 if iteration % 10 == 0:
-                    self._log_performance()
+                    self._log_performance(current_price)
 
                 # 9. Save account snapshot to database
                 if iteration % 20 == 0:
-                    self._save_snapshot()
+                    self._save_snapshot(current_price)
 
                 # Sleep (to avoid hammering API)
                 time.sleep(5)  # Check every 5 seconds
@@ -634,7 +634,7 @@ class PaperTrader:
             self.logger.debug(f"Error fetching liquidations: {e}")
             return None
 
-    def _log_performance(self) -> None:
+    def _log_performance(self, current_price: float) -> None:
         """Log current performance metrics."""
         equity = self.account.get_equity()
         pnl = equity - self.account.starting_balance
@@ -642,17 +642,18 @@ class PaperTrader:
         drawdown = ((self.risk_mgr.peak_equity - equity) / self.risk_mgr.peak_equity) * 100
 
         self.logger.info(
-            f"💰 Equity: ${equity:.2f} | PnL: ${pnl:+.2f} ({pnl_pct:+.2f}%) | "
+            f"💰 BTC: ${current_price:,.2f} | Equity: ${equity:.2f} | PnL: ${pnl:+.2f} ({pnl_pct:+.2f}%) | "
             f"DD: {drawdown:.2f}% | Open: {len(self.account.get_open_positions())}"
         )
 
-    def _save_snapshot(self) -> None:
+    def _save_snapshot(self, current_price: float) -> None:
         """Save account snapshot to database."""
         equity = self.account.get_equity()
 
         self.db.insert_account_snapshot({
             'mode': 'paper',
             'timestamp': int(time.time() * 1000),
+            'current_price': current_price,
             'equity': equity,
             'balance': self.account.balance,
             'unrealized_pnl': self.account.unrealized_pnl,
