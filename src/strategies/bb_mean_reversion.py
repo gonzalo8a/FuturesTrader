@@ -152,19 +152,30 @@ class BBMeanReversionStrategy:
         confidence = 0.0
         reason = ""
 
-        # LONG signal: Price touches or breaks below lower BB
-        # bb_touch_threshold = 0.998 means trigger when price <= 99.8% of lower band
-        if current_price <= latest['bb_lower'] * self.bb_touch_threshold:
-            # Price is at or below lower band (mean reversion opportunity)
+        # Calculate trigger points based on distance from middle band
+        # bb_touch_threshold determines how far from middle toward band edge:
+        # - 0.5 = trigger halfway between middle and band (VERY AGGRESSIVE)
+        # - 0.9 = trigger 90% of way from middle to band (more conservative)
+        # - 1.0 = trigger exactly at band edge
+        # - 1.1 = trigger 10% beyond band (wait for confirmation)
+
+        upper_distance = latest['bb_upper'] - latest['bb_middle']
+        lower_distance = latest['bb_middle'] - latest['bb_lower']
+
+        upper_trigger = latest['bb_middle'] + (upper_distance * self.bb_touch_threshold)
+        lower_trigger = latest['bb_middle'] - (lower_distance * self.bb_touch_threshold)
+
+        # LONG signal: Price reaches lower trigger point
+        if current_price <= lower_trigger:
             signal_side = "LONG"
 
             # Calculate confidence based on:
-            # - How far below the band (more = higher confidence)
+            # - How far below trigger (more = higher confidence)
             # - Volume spike (confirmation)
             # - BB width (wider = more stretched = higher reversion potential)
 
-            distance_below = (latest['bb_lower'] - current_price) / latest['bb_lower']
-            confidence = min(0.5 + distance_below * 100, 1.0)  # Base confidence
+            distance_pct = (lower_trigger - current_price) / latest['bb_middle'] * 100
+            confidence = min(0.5 + distance_pct, 1.0)  # Base confidence
 
             if latest['volume_spike']:
                 confidence = min(confidence + 0.2, 1.0)  # Volume confirmation
@@ -172,17 +183,15 @@ class BBMeanReversionStrategy:
             if latest['bb_width'] > df['bb_width'].iloc[-50:].mean() * 1.2:
                 confidence = min(confidence + 0.1, 1.0)  # High volatility = more reversion potential
 
-            reason = f"Price touched lower BB (${latest['bb_lower']:.2f}), expecting mean reversion"
+            reason = f"Price ${current_price:.2f} below trigger ${lower_trigger:.2f} (BB lower: ${latest['bb_lower']:.2f})"
 
-        # SHORT signal: Price touches or breaks above upper BB
-        # bb_touch_threshold = 0.998 means trigger when price >= upper_band / 0.998 (100.2% of upper band)
-        elif current_price >= latest['bb_upper'] / self.bb_touch_threshold:
-            # Price is at or above upper band (mean reversion opportunity)
+        # SHORT signal: Price reaches upper trigger point
+        elif current_price >= upper_trigger:
             signal_side = "SHORT"
 
             # Calculate confidence
-            distance_above = (current_price - latest['bb_upper']) / latest['bb_upper']
-            confidence = min(0.5 + distance_above * 100, 1.0)
+            distance_pct = (current_price - upper_trigger) / latest['bb_middle'] * 100
+            confidence = min(0.5 + distance_pct, 1.0)
 
             if latest['volume_spike']:
                 confidence = min(confidence + 0.2, 1.0)
@@ -190,7 +199,7 @@ class BBMeanReversionStrategy:
             if latest['bb_width'] > df['bb_width'].iloc[-50:].mean() * 1.2:
                 confidence = min(confidence + 0.1, 1.0)
 
-            reason = f"Price touched upper BB (${latest['bb_upper']:.2f}), expecting mean reversion"
+            reason = f"Price ${current_price:.2f} above trigger ${upper_trigger:.2f} (BB upper: ${latest['bb_upper']:.2f})"
 
         # No signal if not touching bands
         if signal_side is None:

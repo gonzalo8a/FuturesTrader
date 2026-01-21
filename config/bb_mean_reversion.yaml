@@ -29,8 +29,8 @@ strategy:
     atr_period: 14
     max_atr_multiplier: 5.0  # Increased from 3.0 (allow more volatility)
 
-    # Mean reversion specific (MORE AGGRESSIVE)
-    bb_touch_threshold: 0.90  # Enter at 90% of band distance (was 0.998)
+    # Mean reversion specific (ULTRA AGGRESSIVE)
+    bb_touch_threshold: 0.70  # Enter at 70% of distance from middle to band edge
     require_volume_spike: false  # Disabled - don't require volume confirmation
     volume_spike_multiplier: 1.5
 
